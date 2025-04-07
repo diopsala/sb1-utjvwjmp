@@ -1,0 +1,164 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Fonctions utilitaires
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return request.auth.uid == userId && request.auth != null;
+    }
+
+    // Validation des champs
+    function isValidString(field) {
+      return field is string && field.size() > 0 && field.size() <= 50000;
+    }
+
+    function isValidTimestamp(field) {
+      return field is timestamp && 
+             field <= request.time && 
+             field.toMillis() >= request.time.toMillis() - 5 * 60 * 1000; // Dans les 5 dernières minutes
+    }
+
+    function isValidCloudinaryUrl(url) {
+      return url is string && 
+             url.matches('^https://res\\.cloudinary\\.com/.*') &&
+             url.size() <= 500;
+    }
+
+    function isValidSubject(subject) {
+      let validSubjects = ['math', 'physics', 'biology', 'french', 'history', 'english'];
+      return subject in validSubjects;
+    }
+
+    function isValidTitle(title) {
+      return title is string && title.size() <= 200;
+    }
+
+    function isValidTags(tags) {
+      return tags is list && 
+             tags.size() <= 10 && 
+             tags[0] is string &&
+             tags[1] is string || tags[1] == null &&
+             tags[2] is string || tags[2] == null &&
+             tags[3] is string || tags[3] == null &&
+             tags[4] is string || tags[4] == null &&
+             tags[5] is string || tags[5] == null &&
+             tags[6] is string || tags[6] == null &&
+             tags[7] is string || tags[7] == null &&
+             tags[8] is string || tags[8] == null &&
+             tags[9] is string || tags[9] == null &&
+             (tags.size() == 0 || tags[0].size() <= 30) &&
+             (tags.size() <= 1 || tags[1].size() <= 30) &&
+             (tags.size() <= 2 || tags[2].size() <= 30) &&
+             (tags.size() <= 3 || tags[3].size() <= 30) &&
+             (tags.size() <= 4 || tags[4].size() <= 30) &&
+             (tags.size() <= 5 || tags[5].size() <= 30) &&
+             (tags.size() <= 6 || tags[6].size() <= 30) &&
+             (tags.size() <= 7 || tags[7].size() <= 30) &&
+             (tags.size() <= 8 || tags[8].size() <= 30) &&
+             (tags.size() <= 9 || tags[9].size() <= 30);
+    }
+
+    // Validation des devoirs
+    function hasRequiredHomeworkFields() {
+      let data = request.resource.data;
+      return data.keys().hasAll(['analysis', 'image_url', 'created_at', 'user_id']) &&
+             !data.keys().hasAny(['__name__', '__type__']);
+    }
+
+    function isValidHomework() {
+      let data = request.resource.data;
+      return hasRequiredHomeworkFields() &&
+             isValidString(data.analysis) &&
+             isValidCloudinaryUrl(data.image_url) &&
+             isValidTimestamp(data.created_at) &&
+             isValidString(data.user_id) &&
+             data.user_id == request.auth.uid &&
+             (!data.keys().hasKey('title') || isValidTitle(data.title)) &&
+             (!data.keys().hasKey('subject') || isValidSubject(data.subject)) &&
+             (!data.keys().hasKey('tags') || isValidTags(data.tags)) &&
+             (!data.keys().hasKey('isPinned') || data.isPinned is bool) &&
+             (!data.keys().hasKey('isFavorite') || data.isFavorite is bool);
+    }
+
+    function isValidHomeworkUpdate() {
+      let data = request.resource.data;
+      let allowedFields = ['analysis', 'correction', 'image_url', 'title', 'subject', 'tags', 'isPinned', 'isFavorite'];
+      
+      return data.diff(resource.data).affectedKeys().hasAny(allowedFields) &&
+             (!data.keys().hasKey('user_id') || data.user_id == resource.data.user_id) &&
+             (!data.keys().hasKey('created_at') || data.created_at == resource.data.created_at) &&
+             (!data.keys().hasKey('title') || isValidTitle(data.title)) &&
+             (!data.keys().hasKey('subject') || isValidSubject(data.subject)) &&
+             (!data.keys().hasKey('tags') || isValidTags(data.tags)) &&
+             (!data.keys().hasKey('isPinned') || data.isPinned is bool) &&
+             (!data.keys().hasKey('isFavorite') || data.isFavorite is bool);
+    }
+
+    // Validation du profil utilisateur
+    function isValidUserProfile() {
+      let data = request.resource.data;
+      return (data.fullName is string || data.fullName == null) &&
+             (data.email is string || data.email == null) &&
+             (data.photoURL == null || (data.photoURL is string && data.photoURL.size() <= 500)) &&
+             (data.educationLevel == null || (data.educationLevel is string && data.educationLevel.size() <= 50)) &&
+             (data.school == null || (data.school is string && data.school.size() <= 100)) &&
+             (data.biography == null || (data.biography is string && data.biography.size() <= 500)) &&
+             (data.notifications == null || (
+               data.notifications is map &&
+               (data.notifications.homework is bool || data.notifications.homework == null) &&
+               (data.notifications.corrections is bool || data.notifications.corrections == null) &&
+               (data.notifications.reminders is bool || data.notifications.reminders == null) &&
+               (data.notifications.news is bool || data.notifications.news == null)
+             )) &&
+             (data.darkMode is bool || data.darkMode == null);
+    }
+
+    // Limitation du taux de requêtes
+    function notRateLimited() {
+      let recentWrites = getCountFromPath(
+        /databases/$(database)/documents/homework,
+        true,
+        duration.value(5, 'MINUTES')
+      );
+      return recentWrites < 10; // Max 10 écritures par 5 minutes
+    }
+
+    // Règles pour la collection homework
+    match /homework/{homeworkId} {
+      // Lecture autorisée si l'utilisateur est propriétaire
+      allow read: if isAuthenticated() && isOwner(resource.data.user_id);
+      
+      // Création autorisée avec validation et limitation de taux
+      allow create: if isAuthenticated() 
+        && isValidHomework()
+        && notRateLimited();
+      
+      // Mise à jour autorisée avec validation
+      allow update: if isAuthenticated() 
+        && isOwner(resource.data.user_id)
+        && isValidHomeworkUpdate();
+      
+      // Suppression autorisée avec vérification du propriétaire
+      allow delete: if isAuthenticated() 
+        && isOwner(resource.data.user_id);
+    }
+
+    // Règles pour la collection users
+    match /users/{userId} {
+      // Lecture autorisée si l'utilisateur est propriétaire
+      allow read: if isAuthenticated() && isOwner(userId);
+      
+      // Création autorisée avec validation
+      allow create: if isAuthenticated() && isOwner(userId) && isValidUserProfile();
+      
+      // Mise à jour autorisée avec validation
+      allow update: if isAuthenticated() && isOwner(userId) && isValidUserProfile();
+      
+      // Suppression autorisée avec vérification du propriétaire
+      allow delete: if isAuthenticated() && isOwner(userId);
+    }
+  }
+}
