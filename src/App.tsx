@@ -1,10 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Camera, FolderOpen, BookOpen, BarChart2, Settings, MessageCircle, Search, Sun, Moon, Bell, LogOut } from 'lucide-react';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from './lib/firebase';
+import { Shield } from 'lucide-react';
 import Scanner from './components/Scanner';
 import Login from './components/Login';
 import HomeworkHistory from './components/HomeworkHistory';
+import AdminPanel from './components/AdminPanel';
 import SettingsPage from './components/Settings';
 import { useAuth } from './contexts/AuthContext';
+import { Navigate } from 'react-router-dom';
 
 function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -12,8 +17,36 @@ function App() {
   const [showHomework, setShowHomework] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [redirectToHomework, setRedirectToHomework] = useState(false);
+  const [adminCheckComplete, setAdminCheckComplete] = useState(false);
   const { currentUser, logout } = useAuth();
+
+  useEffect(() => {
+    if (!currentUser) {
+      setIsAdmin(false);
+      setAdminCheckComplete(true);
+      return;
+    }
+
+    const unsubscribe = onSnapshot(
+      doc(db, 'users', currentUser.uid),
+      (docSnapshot) => {
+        if (docSnapshot.exists()) {
+          const userData = docSnapshot.data();
+          // Only set isAdmin to true if explicitly set in the database
+          const hasAdminAccess = userData.isAdmin === true;
+          setIsAdmin(hasAdminAccess);
+          setAdminCheckComplete(true);
+        } else {
+          setIsAdmin(false);
+          setAdminCheckComplete(true);
+        }
+      }
+    );
+
+    return () => unsubscribe();
+  }, [currentUser]);
 
   const toggleDarkMode = () => {
     setIsDarkMode(!isDarkMode);
@@ -33,6 +66,20 @@ function App() {
       console.error('Error logging out:', error);
     }
   };
+
+  // Only redirect to AdminPanel if isAdmin is explicitly true
+  if (isAdmin === true) {
+    return <AdminPanel />;
+  }
+
+  // Show loading state while checking admin status
+  if (!adminCheckComplete) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
 
   if (showSettings) {
     return (
@@ -67,6 +114,14 @@ function App() {
                 Retour
               </button>
               <div className="flex items-center gap-4">
+                {isAdmin && (
+                  <button
+                    onClick={() => setShowAdmin(true)}
+                    className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg font-medium hover:from-purple-700 hover:to-indigo-700"
+                  >
+                    Admin Panel
+                  </button>
+                )}
                 <button
                   onClick={toggleDarkMode}
                   className={`p-2 rounded-full ${isDarkMode ? 'bg-gray-700/50 hover:bg-gray-700 text-yellow-400' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'} transition-colors`}
@@ -97,6 +152,15 @@ function App() {
               <button className={`p-2 rounded-full ${isDarkMode ? 'bg-gray-700/50 hover:bg-gray-700' : 'bg-gray-100 hover:bg-gray-200'} transition-colors`}>
                 <Bell size={20} className={isDarkMode ? 'text-gray-300' : 'text-gray-600'} />
               </button>
+              {isAdmin && (
+                <button
+                  onClick={() => setShowAdmin(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg font-medium hover:from-purple-700 hover:to-indigo-700"
+                >
+                  <Shield size={20} />
+                  <span>Admin Panel</span>
+                </button>
+              )}
               <button
                 onClick={toggleDarkMode}
                 className={`p-2 rounded-full ${isDarkMode ? 'bg-gray-700/50 hover:bg-gray-700 text-yellow-400' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'} transition-colors`}
@@ -127,7 +191,8 @@ function App() {
       {/* Main Content */}
       <main className="container mx-auto px-6 pt-24 pb-24">
         {currentUser ? (
-          <>
+          !isAdmin && (
+            <>
             {/* Welcome Section */}
             <div className="mb-8">
               <h2 className={`text-3xl font-bold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
@@ -254,7 +319,8 @@ function App() {
                 </p>
               </div>
             </div>
-          </>
+            </>
+          )
         ) : (
           <div className="flex flex-col items-center justify-center min-h-[60vh]">
             <h2 className={`text-3xl font-bold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
@@ -274,7 +340,7 @@ function App() {
       </main>
 
       {/* Footer Navigation */}
-      {currentUser && (
+      {currentUser && !isAdmin && (
         <footer className={`fixed bottom-0 w-full ${isDarkMode ? 'bg-gray-800/95' : 'bg-white/95'} backdrop-blur-sm shadow-lg`}>
           <div className="container mx-auto px-6 py-4">
             <div className="flex justify-around items-center">
