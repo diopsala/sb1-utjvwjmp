@@ -16,6 +16,7 @@
     "@nivo/bar": "^0.84.0",
     "@nivo/core": "^0.84.0",
     "@nivo/line": "^0.84.0",
+    "axios": "^1.6.7",
     "cloudinary": "^2.0.3",
     "cloudinary-react": "^1.8.1",
     "firebase": "^10.8.0",

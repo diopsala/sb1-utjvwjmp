@@ -20,30 +20,28 @@ export default function OpenAIMonitoring() {
         setLoading(true);
         setError(null);
 
-        // Generate realistic mock data based on timeframe
-        const now = new Date();
-        const mockData = [];
-        
-        const daysToGenerate = timeframe === '24h' ? 1 : timeframe === '7d' ? 7 : 30;
-        
-        for (let i = 0; i < daysToGenerate; i++) {
-          const date = new Date(now);
-          date.setDate(date.getDate() - i);
-          
-          // Generate random but realistic token counts
-          const promptTokens = Math.floor(800 + Math.random() * 400);
-          const completionTokens = Math.floor(400 + Math.random() * 200);
-          
-          mockData.unshift({
-            timestamp: date.toISOString(),
-            prompt_tokens: promptTokens,
-            completion_tokens: completionTokens,
-            total_tokens: promptTokens + completionTokens
-          });
+        const response = await fetch('https://api.openai.com/v1/dashboard/billing/usage', {
+          headers: {
+            'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`,
+            'Content-Type': 'application/json',
+            'OpenAI-Beta': 'v1'
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch OpenAI usage data');
         }
+
+        const data = await response.json();
         
-        setUsageData(mockData);
-        setError(null);
+        // Transform the data into our expected format
+        const transformedData = [{
+          timestamp: new Date().toISOString(),
+          prompt_tokens: data.total_usage || 0,
+          completion_tokens: 0,
+          total_tokens: data.total_usage || 0
+        }];
+        setUsageData(transformedData);
 
       } catch (error) {
         console.error('Error fetching OpenAI usage:', error);
