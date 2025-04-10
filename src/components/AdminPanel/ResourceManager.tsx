@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Search, 
   Filter, 
@@ -13,7 +13,8 @@ import {
   ChevronLeft, 
   ChevronRight, 
   ArrowDown, 
-  ArrowUp 
+  ArrowUp,
+  Upload
 } from 'lucide-react';
 import { 
   collection, 
@@ -27,11 +28,12 @@ import {
   limit, 
   startAfter, 
   getDoc,
-  Timestamp 
+  addDoc
 } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import axios from 'axios';
+import { uploadToCloudinary, getFileExtension, normalizeFilename } from '../../lib/cloudinary';
 
 interface Resource {
   id: string;
@@ -47,6 +49,18 @@ interface Resource {
   created_at: string;
   updated_at: string;
   created_by: string;
+}
+
+interface NewResource {
+  title: string;
+  subject: string;
+  level: string;
+  type: string;
+  difficulty: number;
+  tags: string[];
+  language: string;
+  year: string;
+  file: File | null;
 }
 
 const RESOURCE_TYPES = [
@@ -105,10 +119,27 @@ export default function ResourceManager() {
   // Modal states
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedResource, setSelectedResource] = useState<Resource | null>(null);
   const [editForm, setEditForm] = useState<Partial<Resource>>({});
   const [processing, setProcessing] = useState(false);
   const [notification, setNotification] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+  
+  // Create form state
+  const [newResource, setNewResource] = useState<NewResource>({
+    title: '',
+    subject: 'math',
+    level: 'college',
+    type: 'course',
+    difficulty: 3,
+    tags: [],
+    language: 'fr',
+    year: new Date().getFullYear().toString(),
+    file: null
+  });
+  
+  // File input ref for programmatic clicks
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { currentUser } = useAuth();
 
@@ -132,10 +163,13 @@ export default function ResourceManager() {
       setLoading(true);
       setError(null);
       
-      let q = collection(db, 'resources');
-      let constraints = [];
+      // Start with a base collection reference
+      const resourcesRef = collection(db, 'resources');
       
-      // Apply filters
+      // Build an array of query constraints
+      const constraints = [];
+      
+      // Only add filter constraints if they have values
       if (filters.subject) {
         constraints.push(where('subject', '==', filters.subject));
       }
@@ -159,8 +193,8 @@ export default function ResourceManager() {
         constraints.push(startAfter(pagination.lastVisible));
       }
       
-      // Build the query
-      q = query(q, ...constraints);
+      // Build the query with all applicable constraints
+      let q = query(resourcesRef, ...constraints);
       
       // Execute the query
       const querySnapshot = await getDocs(q);
@@ -209,6 +243,121 @@ export default function ResourceManager() {
   const extractPublicId = (url: string) => {
     const matches = url.match(/\/upload\/(?:v\d+\/)?(.+?)(?:\.\w+)?$/);
     return matches ? matches[1] : null;
+  };
+
+  // Create a new resource
+  const createResource = async () => {
+    if (!currentUser) {
+      setNotification({
+        message: 'Vous devez être connecté pour créer une ressource',
+        type: 'error'
+      });
+      return;
+    }
+    
+    if (!newResource.title) {
+      setNotification({
+        message: 'Le titre est obligatoire',
+        type: 'error'
+      });
+      return;
+    }
+    
+    if (!newResource.file) {
+      setNotification({
+        message: 'Veuillez sélectionner un fichier',
+        type: 'error'
+      });
+      return;
+    }
+    
+    // Validate file type
+    const allowedTypes = ['.pdf', '.doc', '.docx'];
+    const fileExt = `.${getFileExtension(newResource.file.name)}`;
+    if (!allowedTypes.includes(fileExt)) {
+      setNotification({
+        message: 'Format de fichier non supporté. Formats acceptés: PDF, DOC, DOCX',
+        type: 'error'
+      });
+      return;
+    }
+    
+    setProcessing(true);
+    
+    try {
+      // Generate clean filename based on title
+      const cleanTitle = normalizeFilename(newResource.title);
+      
+      // Upload file to Cloudinary - first convert to data URL
+      const reader = new FileReader();
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(newResource.file!);
+      });
+      
+      // Upload the file with the clean title as filename
+      const fileUrl = await uploadToCloudinary(dataUrl, cleanTitle);
+      
+      // Prepare data for Firestore
+      const now = new Date().toISOString();
+      const resourceData = {
+        title: newResource.title,
+        subject: newResource.subject,
+        level: newResource.level,
+        type: newResource.type,
+        difficulty: newResource.difficulty,
+        tags: newResource.tags,
+        language: newResource.language,
+        year: newResource.year,
+        file_url: fileUrl,
+        created_at: now,
+        updated_at: now,
+        created_by: currentUser.uid
+      };
+      
+      // Save to Firestore
+      const docRef = await addDoc(collection(db, 'resources'), resourceData);
+      
+      // Add to local state
+      setResources(prev => [{
+        id: docRef.id,
+        ...resourceData
+      } as Resource, ...prev]);
+      
+      // Reset form and close modal
+      setNewResource({
+        title: '',
+        subject: 'math',
+        level: 'college',
+        type: 'course',
+        difficulty: 3,
+        tags: [],
+        language: 'fr',
+        year: new Date().getFullYear().toString(),
+        file: null
+      });
+      setShowCreateModal(false);
+      
+      // Show success notification
+      setNotification({
+        message: 'Ressource créée avec succès',
+        type: 'success'
+      });
+      
+      // Refresh resource list
+      fetchResources();
+      
+    } catch (error) {
+      console.error('Error creating resource:', error);
+      setNotification({
+        message: error instanceof Error ? `Erreur: ${error.message}` : 'Erreur lors de la création de la ressource',
+        type: 'error'
+      });
+    } finally {
+      setProcessing(false);
+      setTimeout(() => setNotification(null), 3000);
+    }
   };
 
   // Delete resource from Cloudinary and Firestore
@@ -332,9 +481,54 @@ export default function ResourceManager() {
     setShowDeleteModal(true);
   };
 
+  // Handle file select
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setNewResource(prev => ({ ...prev, file: e.target.files![0] }));
+    }
+  };
+
   // Handle download
-  const handleDownload = (fileUrl: string) => {
-    window.open(fileUrl, '_blank');
+  const handleDownload = async (resource: Resource) => {
+    try {
+      // Get the file extension from the URL
+      const fileUrl = resource.file_url;
+      const urlParts = fileUrl.split('.');
+      const fileExtension = urlParts.length > 1 ? `.${urlParts.pop()}` : '';
+      
+      // Clean the title for the download filename
+      const cleanTitle = resource.title.replace(/[^a-zA-Z0-9]/g, '-');
+      const downloadFilename = `${cleanTitle}${fileExtension}`;
+      
+      // Fetch the file
+      const response = await fetch(fileUrl);
+      const blob = await response.blob();
+      
+      // Create a download link
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = downloadFilename;
+      document.body.appendChild(a);
+      a.click();
+      
+      // Clean up
+      window.URL.revokeObjectURL(downloadUrl);
+      document.body.removeChild(a);
+      
+      setNotification({
+        message: 'Téléchargement démarré',
+        type: 'success'
+      });
+      setTimeout(() => setNotification(null), 3000);
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      setNotification({
+        message: 'Erreur lors du téléchargement du fichier',
+        type: 'error'
+      });
+      setTimeout(() => setNotification(null), 3000);
+    }
   };
 
   // Filter resources based on search term
@@ -358,6 +552,7 @@ export default function ResourceManager() {
           Ressources pédagogiques
         </h1>
         <button
+          onClick={() => setShowCreateModal(true)}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
           <Plus className="w-5 h-5" />
@@ -531,7 +726,7 @@ export default function ResourceManager() {
                     <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex items-center justify-center gap-2">
                         <button
-                          onClick={() => handleDownload(resource.file_url)}
+                          onClick={() => handleDownload(resource)}
                           className="p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-full transition-colors"
                           title="Télécharger"
                         >
@@ -573,6 +768,187 @@ export default function ResourceManager() {
           </div>
         )}
       </div>
+
+      {/* Create Resource Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div 
+            className="bg-white dark:bg-gray-800 rounded-2xl max-w-3xl w-full p-6 shadow-xl overflow-y-auto max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
+                Nouvelle ressource pédagogique
+              </h3>
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Titre <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={newResource.title}
+                  onChange={(e) => setNewResource(prev => ({ ...prev, title: e.target.value }))}
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Matière <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={newResource.subject}
+                  onChange={(e) => setNewResource(prev => ({ ...prev, subject: e.target.value }))}
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  required
+                >
+                  {SUBJECTS.map(subject => (
+                    <option key={subject.id} value={subject.id}>{subject.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Niveau <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={newResource.level}
+                  onChange={(e) => setNewResource(prev => ({ ...prev, level: e.target.value }))}
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  required
+                >
+                  {EDUCATION_LEVELS.map(level => (
+                    <option key={level.id} value={level.id}>{level.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Type <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={newResource.type}
+                  onChange={(e) => setNewResource(prev => ({ ...prev, type: e.target.value }))}
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  required
+                >
+                  {RESOURCE_TYPES.map(type => (
+                    <option key={type.id} value={type.id}>{type.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Année
+                </label>
+                <input
+                  type="text"
+                  value={newResource.year}
+                  onChange={(e) => setNewResource(prev => ({ ...prev, year: e.target.value }))}
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Difficulté
+                </label>
+                <select
+                  value={newResource.difficulty}
+                  onChange={(e) => setNewResource(prev => ({ ...prev, difficulty: Number(e.target.value) }))}
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                >
+                  {DIFFICULTY_LEVELS.map(difficulty => (
+                    <option key={difficulty.value} value={difficulty.value}>{difficulty.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Langue
+                </label>
+                <select
+                  value={newResource.language}
+                  onChange={(e) => setNewResource(prev => ({ ...prev, language: e.target.value }))}
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                >
+                  <option value="fr">Français</option>
+                  <option value="en">Anglais</option>
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Tags (séparés par des virgules)
+                </label>
+                <input
+                  type="text"
+                  value={newResource.tags.join(', ')}
+                  onChange={(e) => setNewResource(prev => ({ 
+                    ...prev, 
+                    tags: e.target.value.split(',').map(tag => tag.trim()).filter(Boolean)
+                  }))}
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  placeholder="Ex: grammaire, exercice, test..."
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Fichier <span className="text-red-500">*</span>
+                </label>
+                <div className="flex items-center gap-4">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                  >
+                    <Upload className="w-5 h-5" />
+                    Sélectionner un fichier
+                  </button>
+                  <span className="text-sm text-gray-500 dark:text-gray-400">
+                    {newResource.file ? newResource.file.name : 'Aucun fichier sélectionné'}
+                  </span>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    accept=".pdf,.doc,.docx"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
+                </div>
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  Formats acceptés: PDF, DOC, DOCX. Taille max: 10MB.
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex items-center justify-end gap-3">
+              <button
+                onClick={() => setShowCreateModal(false)}
+                disabled={processing}
+                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={createResource}
+                disabled={processing || !newResource.title || !newResource.file}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Save className="w-4 h-4" />
+                {processing ? 'Création en cours...' : 'Créer la ressource'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Modal */}
       {showDeleteModal && selectedResource && (
