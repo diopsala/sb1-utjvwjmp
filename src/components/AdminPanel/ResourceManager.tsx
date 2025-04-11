@@ -74,15 +74,21 @@ interface EducationLevel {
   label: string;
 }
 
-interface ResourceType {
-  id: string;
-  label: string;
-}
+const RESOURCE_TYPES = [
+  { id: 'course', label: 'Cours' },
+  { id: 'homework', label: 'Devoir' },
+  { id: 'exam', label: 'Examen' },
+  { id: 'exercise', label: 'Exercice' },
+  { id: 'sheet', label: 'Fiche' }
+];
 
-interface DifficultyLevel {
-  value: number;
-  label: string;
-}
+const DIFFICULTY_LEVELS = [
+  { value: 1, label: 'Très facile' },
+  { value: 2, label: 'Facile' },
+  { value: 3, label: 'Moyen' },
+  { value: 4, label: 'Difficile' },
+  { value: 5, label: 'Très difficile' }
+];
 
 export default function ResourceManager() {
   const [resources, setResources] = useState<Resource[]>([]);
@@ -117,9 +123,9 @@ export default function ResourceManager() {
   // Create form state
   const [newResource, setNewResource] = useState<NewResource>({
     title: '',
-    subject: '',
-    level: '',
-    type: '',
+    subject: 'math',
+    level: 'college',
+    type: 'course',
     difficulty: 3,
     tags: [],
     language: 'fr',
@@ -130,12 +136,8 @@ export default function ResourceManager() {
   // Dynamic data from Firestore
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [educationLevels, setEducationLevels] = useState<EducationLevel[]>([]);
-  const [resourceTypes, setResourceTypes] = useState<ResourceType[]>([]);
-  const [difficultyLevels, setDifficultyLevels] = useState<DifficultyLevel[]>([]);
   const [loadingSubjects, setLoadingSubjects] = useState(true);
   const [loadingLevels, setLoadingLevels] = useState(true);
-  const [loadingTypes, setLoadingTypes] = useState(true);
-  const [loadingDifficulties, setLoadingDifficulties] = useState(true);
   
   // File input ref for programmatic clicks
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -175,68 +177,21 @@ export default function ResourceManager() {
         setLoadingLevels(false);
       }
     );
-
-    const typesUnsubscribe = onSnapshot(
-      query(collection(db, 'resource_types'), orderBy('label')),
-      (snapshot) => {
-        const typesData = snapshot.docs.map(doc => ({
-          id: doc.data().id,
-          label: doc.data().label
-        }));
-        setResourceTypes(typesData);
-        setLoadingTypes(false);
-      },
-      (error) => {
-        console.error('Error fetching resource types:', error);
-        setLoadingTypes(false);
-      }
-    );
-
-    const difficultiesUnsubscribe = onSnapshot(
-      query(collection(db, 'difficulty_levels'), orderBy('value')),
-      (snapshot) => {
-        const difficultiesData = snapshot.docs.map(doc => ({
-          value: doc.data().value,
-          label: doc.data().label
-        }));
-        setDifficultyLevels(difficultiesData);
-        setLoadingDifficulties(false);
-      },
-      (error) => {
-        console.error('Error fetching difficulty levels:', error);
-        setLoadingDifficulties(false);
-      }
-    );
+    
+    // Set default values for new resource once data is loaded
+    if (subjects.length > 0 && newResource.subject === 'math') {
+      setNewResource(prev => ({ ...prev, subject: subjects[0].id }));
+    }
+    
+    if (educationLevels.length > 0 && newResource.level === 'college') {
+      setNewResource(prev => ({ ...prev, level: educationLevels[0].id }));
+    }
     
     return () => {
       subjectsUnsubscribe();
       levelsUnsubscribe();
-      typesUnsubscribe();
-      difficultiesUnsubscribe();
     };
   }, []);
-  
-  // Update default values when data is loaded
-  useEffect(() => {
-    if (subjects.length > 0 && !newResource.subject) {
-      setNewResource(prev => ({ ...prev, subject: subjects[0].id }));
-    }
-    
-    if (educationLevels.length > 0 && !newResource.level) {
-      setNewResource(prev => ({ ...prev, level: educationLevels[0].id }));
-    }
-    
-    if (resourceTypes.length > 0 && !newResource.type) {
-      setNewResource(prev => ({ ...prev, type: resourceTypes[0].id }));
-    }
-    
-    if (difficultyLevels.length > 0) {
-      // If no difficulty level is set, use the middle value (usually 3)
-      const middleValue = Math.ceil(difficultyLevels.length / 2);
-      const defaultDifficulty = difficultyLevels.find(d => d.value === middleValue)?.value || 3;
-      setNewResource(prev => ({ ...prev, difficulty: defaultDifficulty }));
-    }
-  }, [subjects, educationLevels, resourceTypes, difficultyLevels]);
 
   // Format date function
   const formatDate = (dateString: string) => {
@@ -423,10 +378,10 @@ export default function ResourceManager() {
       // Reset form and close modal
       setNewResource({
         title: '',
-        subject: subjects.length > 0 ? subjects[0].id : '',
-        level: educationLevels.length > 0 ? educationLevels[0].id : '',
-        type: resourceTypes.length > 0 ? resourceTypes[0].id : '',
-        difficulty: difficultyLevels.length > 0 ? difficultyLevels[0].value : 3,
+        subject: subjects.length > 0 ? subjects[0].id : 'math',
+        level: educationLevels.length > 0 ? educationLevels[0].id : 'college',
+        type: 'course',
+        difficulty: 3,
         tags: [],
         language: 'fr',
         year: new Date().getFullYear().toString(),
@@ -634,7 +589,7 @@ export default function ResourceManager() {
     return (
       resource.title.toLowerCase().includes(searchLower) ||
       subjects.find(s => s.id === resource.subject)?.label.toLowerCase().includes(searchLower) ||
-      resourceTypes.find(t => t.id === resource.type)?.label.toLowerCase().includes(searchLower) ||
+      RESOURCE_TYPES.find(t => t.id === resource.type)?.label.toLowerCase().includes(searchLower) ||
       formatDate(resource.created_at).toLowerCase().includes(searchLower)
     );
   });
@@ -673,13 +628,9 @@ export default function ResourceManager() {
           className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
         >
           <option value="">Toutes les matières</option>
-          {loadingSubjects ? (
-            <option disabled>Chargement...</option>
-          ) : (
-            subjects.map(subject => (
-              <option key={subject.id} value={subject.id}>{subject.label}</option>
-            ))
-          )}
+          {subjects.map(subject => (
+            <option key={subject.id} value={subject.id}>{subject.label}</option>
+          ))}
         </select>
         <select
           value={filters.level}
@@ -687,13 +638,9 @@ export default function ResourceManager() {
           className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
         >
           <option value="">Tous les niveaux</option>
-          {loadingLevels ? (
-            <option disabled>Chargement...</option>
-          ) : (
-            educationLevels.map(level => (
-              <option key={level.id} value={level.id}>{level.label}</option>
-            ))
-          )}
+          {educationLevels.map(level => (
+            <option key={level.id} value={level.id}>{level.label}</option>
+          ))}
         </select>
         <select
           value={filters.type}
@@ -701,13 +648,9 @@ export default function ResourceManager() {
           className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
         >
           <option value="">Tous les types</option>
-          {loadingTypes ? (
-            <option disabled>Chargement...</option>
-          ) : (
-            resourceTypes.map(type => (
-              <option key={type.id} value={type.id}>{type.label}</option>
-            ))
-          )}
+          {RESOURCE_TYPES.map(type => (
+            <option key={type.id} value={type.id}>{type.label}</option>
+          ))}
         </select>
       </div>
 
@@ -770,9 +713,6 @@ export default function ResourceManager() {
                     Type
                   </th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">
-                    Difficulté
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">
                     Année
                   </th>
                   <th 
@@ -814,10 +754,7 @@ export default function ResourceManager() {
                       {educationLevels.find(l => l.id === resource.level)?.label || resource.level}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
-                      {resourceTypes.find(t => t.id === resource.type)?.label || resource.type}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      {difficultyLevels.find(d => d.value === resource.difficulty)?.label || resource.difficulty}
+                      {RESOURCE_TYPES.find(t => t.id === resource.type)?.label || resource.type}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       {resource.year}
@@ -962,13 +899,9 @@ export default function ResourceManager() {
                   className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                   required
                 >
-                  {loadingTypes ? (
-                    <option value="">Chargement...</option>
-                  ) : (
-                    resourceTypes.map(type => (
-                      <option key={type.id} value={type.id}>{type.label}</option>
-                    ))
-                  )}
+                  {RESOURCE_TYPES.map(type => (
+                    <option key={type.id} value={type.id}>{type.label}</option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -991,13 +924,9 @@ export default function ResourceManager() {
                   onChange={(e) => setNewResource(prev => ({ ...prev, difficulty: Number(e.target.value) }))}
                   className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 >
-                  {loadingDifficulties ? (
-                    <option value="3">Chargement...</option>
-                  ) : (
-                    difficultyLevels.map(difficulty => (
-                      <option key={difficulty.value} value={difficulty.value}>{difficulty.label}</option>
-                    ))
-                  )}
+                  {DIFFICULTY_LEVELS.map(difficulty => (
+                    <option key={difficulty.value} value={difficulty.value}>{difficulty.label}</option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -1192,7 +1121,7 @@ export default function ResourceManager() {
                   onChange={(e) => setEditForm(prev => ({ ...prev, type: e.target.value }))}
                   className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 >
-                  {resourceTypes.map(type => (
+                  {RESOURCE_TYPES.map(type => (
                     <option key={type.id} value={type.id}>{type.label}</option>
                   ))}
                 </select>
@@ -1217,7 +1146,7 @@ export default function ResourceManager() {
                   onChange={(e) => setEditForm(prev => ({ ...prev, difficulty: Number(e.target.value) }))}
                   className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 >
-                  {difficultyLevels.map(difficulty => (
+                  {DIFFICULTY_LEVELS.map(difficulty => (
                     <option key={difficulty.value} value={difficulty.value}>{difficulty.label}</option>
                   ))}
                 </select>

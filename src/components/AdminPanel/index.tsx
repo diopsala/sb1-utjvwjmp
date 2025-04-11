@@ -8,18 +8,16 @@ import Dashboard from './Dashboard.tsx';
 import ResourceManager from './ResourceManager.tsx';
 import QuizSettings from './QuizSettings.tsx';
 import SubjectsManager from './SubjectsManager.tsx';
-import ResourceTypesManager from './ResourceTypesManager.tsx';
 import UsersView from './UsersView.tsx';
 import OpenAIMonitoring from './OpenAIMonitoring.tsx';
 import AppSettings from './AppSettings.tsx';
-import { Settings, BookOpen, Brain, BookMarked, Users, Activity, Sliders, FileType, BarChart2 } from 'lucide-react';
+import { Settings, BookOpen, Brain, BookMarked, Users, Activity, Sliders } from 'lucide-react';
 
 const MENU_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', icon: Settings },
   { id: 'resources', label: 'Ressources pédagogiques', icon: BookOpen },
   { id: 'quiz', label: 'Paramètres des quiz', icon: Brain },
   { id: 'subjects', label: 'Matières & niveaux', icon: BookMarked },
-  { id: 'resourceTypes', label: 'Types de ressources & difficultés', icon: FileType },
   { id: 'users', label: 'Utilisateurs', icon: Users },
   { id: 'openai', label: 'Monitoring OpenAI', icon: Activity },
   { id: 'settings', label: 'Paramètres', icon: Sliders }
@@ -79,8 +77,6 @@ export default function AdminPanel() {
         return <QuizSettings />;
       case 'subjects':
         return <SubjectsManager />;
-      case 'resourceTypes':
-        return <ResourceTypesManager />;
       case 'users':
         return <UsersView />;
       case 'openai':
