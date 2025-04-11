@@ -1,4 +1,380 @@
-0
+import React, { useState, useEffect } from 'react';
+import { Save, AlertCircle, Check, HelpCircle, List, BookOpen, MessageSquare, Clock, BarChart2 } from 'lucide-react';
+import { 
+  getDoc, 
+  setDoc, 
+  doc, 
+  onSnapshot, 
+  collection, 
+  query, 
+  orderBy,
+  updateDoc
+} from 'firebase/firestore';
+import { db } from '../../lib/firebase';
+
+// Types definitions
+interface Subject {
+  id: string;
+  label: string;
+  isActiveInQuiz?: boolean;
+}
+
+interface EducationLevel {
+  id: string;
+  label: string;
+}
+
+interface ResourceType {
+  id: string;
+  label: string;
+}
+
+interface DifficultyLevel {
+  value: number;
+  label: string;
+}
+
+interface QuizSettings {
+  totalQuestions: number;
+  passThreshold: number;
+  timeLimit: number;
+  showCorrectionExplanation: boolean;
+  enableGamification: boolean;
+  randomizeQuestions: boolean;
+  quizSourceType: string;
+  questionLanguage: string;
+  questionFormat: string;
+  levels: string[];
+  feedback: {
+    passedMessage: string;
+    failedMessage: string;
+  };
+  activeSubjects?: Record<string, boolean>; // Maps subject IDs to active status
+}
+
+// Default quiz settings
+const defaultQuizSettings: QuizSettings = {
+  totalQuestions: 10,
+  passThreshold: 70,
+  timeLimit: 30,
+  showCorrectionExplanation: true,
+  enableGamification: true,
+  randomizeQuestions: true,
+  quizSourceType: '',
+  questionLanguage: 'fr',
+  questionFormat: 'mcq',
+  levels: [],
+  feedback: {
+    passedMessage: 'Félicitations ! Vous avez réussi ce quiz avec succès. Continuez comme ça !',
+    failedMessage: 'Vous n\'avez pas atteint le score minimal. Révisez et réessayez. Vous pouvez y arriver !'
+  },
+  activeSubjects: {}
+};
+
+// Question format options
+const QUESTION_FORMATS = [
+  { id: 'mcq', label: 'QCM (choix multiples)' },
+  { id: 'open', label: 'Questions ouvertes' },
+  { id: 'true_false', label: 'Vrai ou Faux' },
+  { id: 'mixed', label: 'Format mixte' }
+];
+
+// Language options
+const LANGUAGES = [
+  { id: 'fr', label: 'Français' },
+  { id: 'en', label: 'Anglais' }
+];
+
+export default function QuizSettings() {
+  // State for quiz settings
+  const [settings, setSettings] = useState<QuizSettings>(defaultQuizSettings);
+  const [originalSettings, setOriginalSettings] = useState<QuizSettings>(defaultQuizSettings);
+  
+  // State for changed indication
+  const [hasChanges, setHasChanges] = useState(false);
+  
+  // State for loading status
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  // State for dynamic data from Firestore
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [educationLevels, setEducationLevels] = useState<EducationLevel[]>([]);
+  const [resourceTypes, setResourceTypes] = useState<ResourceType[]>([]);
+  const [difficultyLevels, setDifficultyLevels] = useState<DifficultyLevel[]>([]);
+  
+  // Loading states
+  const [loadingSubjects, setLoadingSubjects] = useState(true);
+  const [loadingLevels, setLoadingLevels] = useState(true);
+  const [loadingTypes, setLoadingTypes] = useState(true);
+  const [loadingDifficulties, setLoadingDifficulties] = useState(true);
+
+  // Load subjects and other collections
+  useEffect(() => {
+    const subjectsUnsubscribe = onSnapshot(
+      query(collection(db, 'subjects'), orderBy('label')),
+      (snapshot) => {
+        const subjectsData = snapshot.docs.map(doc => ({
+          id: doc.data().id,
+          label: doc.data().label,
+          isActiveInQuiz: doc.data().isActiveInQuiz
+        }));
+        setSubjects(subjectsData);
+        setLoadingSubjects(false);
+      },
+      (error) => {
+        console.error('Error fetching subjects:', error);
+        setLoadingSubjects(false);
+      }
+    );
+    
+    const levelsUnsubscribe = onSnapshot(
+      query(collection(db, 'education_levels'), orderBy('label')),
+      (snapshot) => {
+        const levelsData = snapshot.docs.map(doc => ({
+          id: doc.data().id,
+          label: doc.data().label
+        }));
+        setEducationLevels(levelsData);
+        setLoadingLevels(false);
+      },
+      (error) => {
+        console.error('Error fetching education levels:', error);
+        setLoadingLevels(false);
+      }
+    );
+    
+    const typesUnsubscribe = onSnapshot(
+      query(collection(db, 'resource_types'), orderBy('label')),
+      (snapshot) => {
+        const typesData = snapshot.docs.map(doc => ({
+          id: doc.data().id,
+          label: doc.data().label
+        }));
+        setResourceTypes(typesData);
+        setLoadingTypes(false);
+      },
+      (error) => {
+        console.error('Error fetching resource types:', error);
+        setLoadingTypes(false);
+      }
+    );
+    
+    const difficultiesUnsubscribe = onSnapshot(
+      query(collection(db, 'difficulty_levels'), orderBy('value')),
+      (snapshot) => {
+        const difficultiesData = snapshot.docs.map(doc => ({
+          value: doc.data().value,
+          label: doc.data().label
+        }));
+        setDifficultyLevels(difficultiesData);
+        setLoadingDifficulties(false);
+      },
+      (error) => {
+        console.error('Error fetching difficulty levels:', error);
+        setLoadingDifficulties(false);
+      }
+    );
+
+    return () => {
+      subjectsUnsubscribe();
+      levelsUnsubscribe();
+      typesUnsubscribe();
+      difficultiesUnsubscribe();
+    };
+  }, []);
+
+  // Load quiz settings from Firestore
+  useEffect(() => {
+    const fetchQuizSettings = async () => {
+      try {
+        const docRef = doc(db, 'configurations', 'quiz_settings');
+        const docSnap = await getDoc(docRef);
+        
+        if (docSnap.exists()) {
+          const data = docSnap.data() as QuizSettings;
+          // Ensure we have all fields by merging with default settings
+          const mergedSettings = { ...defaultQuizSettings, ...data };
+          
+          // Handle activeSubjects mapping if it exists in old format or is missing
+          if (!mergedSettings.activeSubjects) {
+            mergedSettings.activeSubjects = {};
+          }
+          
+          setSettings(mergedSettings);
+          setOriginalSettings(mergedSettings);
+        } else {
+          // If the document doesn't exist, create it with default values
+          await setDoc(docRef, defaultQuizSettings);
+        }
+      } catch (error) {
+        console.error('Error fetching quiz settings:', error);
+        setNotification({
+          message: 'Erreur lors du chargement des paramètres',
+          type: 'error'
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchQuizSettings();
+  }, []);
+
+  // Check for changes
+  useEffect(() => {
+    if (loading) return;
+    
+    // Deep comparison between current and original settings
+    const hasSettingsChanged = JSON.stringify(settings) !== JSON.stringify(originalSettings);
+    setHasChanges(hasSettingsChanged);
+  }, [settings, originalSettings, loading]);
+
+  // Update subject active status
+  const handleSubjectToggle = (subjectId: string, isActive: boolean) => {
+    setSettings(prev => ({
+      ...prev,
+      activeSubjects: {
+        ...prev.activeSubjects,
+        [subjectId]: isActive
+      }
+    }));
+  };
+
+  // Handle level selection toggle
+  const handleLevelToggle = (levelId: string) => {
+    setSettings(prev => {
+      const newLevels = prev.levels.includes(levelId)
+        ? prev.levels.filter(id => id !== levelId)
+        : [...prev.levels, levelId];
+      
+      return {
+        ...prev,
+        levels: newLevels
+      };
+    });
+  };
+
+  // Save settings to Firestore
+  const saveSettings = async () => {
+    setSaving(true);
+    try {
+      const docRef = doc(db, 'configurations', 'quiz_settings');
+      await setDoc(docRef, settings);
+      
+      // Update subject collection documents with isActiveInQuiz field
+      const subjectPromises = subjects.map(async (subject) => {
+        // Get the document ID by querying for the subject ID
+        const q = query(collection(db, 'subjects'), orderBy('id'));
+        const querySnapshot = await getDocs(q);
+        const subjectDoc = querySnapshot.docs.find(doc => doc.data().id === subject.id);
+        
+        if (subjectDoc) {
+          const isActive = settings.activeSubjects?.[subject.id] ?? false;
+          return updateDoc(doc(db, 'subjects', subjectDoc.id), {
+            isActiveInQuiz: isActive
+          });
+        }
+      });
+      
+      await Promise.all(subjectPromises);
+      
+      setOriginalSettings(settings);
+      setNotification({
+        message: 'Paramètres enregistrés avec succès',
+        type: 'success'
+      });
+    } catch (error) {
+      console.error('Error saving quiz settings:', error);
+      setNotification({
+        message: 'Erreur lors de l\'enregistrement des paramètres',
+        type: 'error'
+      });
+    } finally {
+      setSaving(false);
+      setTimeout(() => setNotification(null), 3000);
+    }
+  };
+
+  return (
+    <div className="space-y-8">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+          Paramètres des quiz
+        </h1>
+      </div>
+
+      {notification && (
+        <div 
+          className={`p-4 rounded-lg ${
+            notification.type === 'success' 
+              ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400' 
+              : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400'
+          } flex items-center gap-2`}
+        >
+          {notification.type === 'success' ? (
+            <Check className="w-5 h-5 flex-shrink-0" />
+          ) : (
+            <AlertCircle className="w-5 h-5 flex-shrink-0" />
+          )}
+          <p>{notification.message}</p>
+        </div>
+      )}
+
+      {loading || loadingSubjects || loadingLevels || loadingTypes || loadingDifficulties ? (
+        <div className="flex justify-center py-8">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {/* Configuration générale */}
+          <section className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm">
+            <div className="flex items-center gap-3 mb-6">
+              <Clock className="w-6 h-6 text-blue-500" />
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                Configuration générale
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Nombre de questions par quiz
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={settings.totalQuestions}
+                  onChange={(e) => setSettings(prev => ({ 
+                    ...prev, 
+                    totalQuestions: parseInt(e.target.value) || 1 
+                  }))}
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Nombre recommandé: entre 5 et 20 questions
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Seuil de validation (%)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={settings.passThreshold}
+                  onChange={(e) => setSettings(prev => ({ 
+                    ...prev, 
+                    passThreshold: parseInt(e.target.value) || 0 
+                  }))}
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Pourcentage minimal pour réussir le quiz
                 </p>
               </div>
 
