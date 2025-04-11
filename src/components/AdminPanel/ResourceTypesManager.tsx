@@ -13,29 +13,36 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 
-interface Item {
+interface ResourceType {
   id: string;
   docId?: string;
   label: string;
 }
 
-export default function SubjectsManager() {
-  // State for subjects and education levels
-  const [subjects, setSubjects] = useState<Item[]>([]);
-  const [educationLevels, setEducationLevels] = useState<Item[]>([]);
+interface DifficultyLevel {
+  value: number;
+  docId?: string;
+  label: string;
+}
+
+export default function ResourceTypesManager() {
+  // State for resource types and difficulty levels
+  const [resourceTypes, setResourceTypes] = useState<ResourceType[]>([]);
+  const [difficultyLevels, setDifficultyLevels] = useState<DifficultyLevel[]>([]);
   
   // State for forms
-  const [newSubject, setNewSubject] = useState<Item>({ id: '', label: '' });
-  const [newLevel, setNewLevel] = useState<Item>({ id: '', label: '' });
+  const [newType, setNewType] = useState<ResourceType>({ id: '', label: '' });
+  const [newDifficulty, setNewDifficulty] = useState<DifficultyLevel>({ value: 1, label: '' });
   
   // State for edit mode
-  const [editingSubject, setEditingSubject] = useState<string | null>(null);
-  const [editingLevel, setEditingLevel] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<Item>({ id: '', label: '' });
+  const [editingType, setEditingType] = useState<string | null>(null);
+  const [editingDifficulty, setEditingDifficulty] = useState<string | null>(null);
+  const [editTypeForm, setEditTypeForm] = useState<ResourceType>({ id: '', label: '' });
+  const [editDifficultyForm, setEditDifficultyForm] = useState<DifficultyLevel>({ value: 1, label: '' });
   
   // State for delete confirmation
-  const [deleteConfirmSubject, setDeleteConfirmSubject] = useState<string | null>(null);
-  const [deleteConfirmLevel, setDeleteConfirmLevel] = useState<string | null>(null);
+  const [deleteConfirmType, setDeleteConfirmType] = useState<string | null>(null);
+  const [deleteConfirmDifficulty, setDeleteConfirmDifficulty] = useState<string | null>(null);
   
   // Status messages
   const [notification, setNotification] = useState<{
@@ -44,55 +51,55 @@ export default function SubjectsManager() {
   } | null>(null);
   
   // Loading states
-  const [loadingSubjects, setLoadingSubjects] = useState(true);
-  const [loadingLevels, setLoadingLevels] = useState(true);
+  const [loadingTypes, setLoadingTypes] = useState(true);
+  const [loadingDifficulties, setLoadingDifficulties] = useState(true);
   const [processing, setProcessing] = useState(false);
 
-  // Fetch subjects and levels on component mount
+  // Fetch resource types and difficulty levels on component mount
   useEffect(() => {
-    fetchSubjects();
-    fetchEducationLevels();
+    fetchResourceTypes();
+    fetchDifficultyLevels();
   }, []);
 
-  // Fetch subjects from Firestore
-  const fetchSubjects = async () => {
+  // Fetch resource types from Firestore
+  const fetchResourceTypes = async () => {
     try {
-      setLoadingSubjects(true);
-      const q = query(collection(db, 'subjects'), orderBy('label'));
+      setLoadingTypes(true);
+      const q = query(collection(db, 'resource_types'), orderBy('label'));
       const querySnapshot = await getDocs(q);
       
       const items = querySnapshot.docs.map(doc => ({
         docId: doc.id,
         ...doc.data(),
-      })) as Item[];
+      })) as ResourceType[];
       
-      setSubjects(items);
+      setResourceTypes(items);
     } catch (error) {
-      console.error('Error fetching subjects:', error);
-      showNotification('Erreur lors du chargement des matières', 'error');
+      console.error('Error fetching resource types:', error);
+      showNotification('Erreur lors du chargement des types de ressources', 'error');
     } finally {
-      setLoadingSubjects(false);
+      setLoadingTypes(false);
     }
   };
 
-  // Fetch education levels from Firestore
-  const fetchEducationLevels = async () => {
+  // Fetch difficulty levels from Firestore
+  const fetchDifficultyLevels = async () => {
     try {
-      setLoadingLevels(true);
-      const q = query(collection(db, 'education_levels'), orderBy('label'));
+      setLoadingDifficulties(true);
+      const q = query(collection(db, 'difficulty_levels'), orderBy('value'));
       const querySnapshot = await getDocs(q);
       
       const items = querySnapshot.docs.map(doc => ({
         docId: doc.id,
         ...doc.data(),
-      })) as Item[];
+      })) as DifficultyLevel[];
       
-      setEducationLevels(items);
+      setDifficultyLevels(items);
     } catch (error) {
-      console.error('Error fetching education levels:', error);
-      showNotification('Erreur lors du chargement des niveaux', 'error');
+      console.error('Error fetching difficulty levels:', error);
+      showNotification('Erreur lors du chargement des niveaux de difficulté', 'error');
     } finally {
-      setLoadingLevels(false);
+      setLoadingDifficulties(false);
     }
   };
 
@@ -103,16 +110,17 @@ export default function SubjectsManager() {
   };
 
   // Check if ID already exists
-  const idExists = (id: string, collection: 'subjects' | 'education_levels') => {
-    if (collection === 'subjects') {
-      return subjects.some(item => item.id === id);
-    } else {
-      return educationLevels.some(item => item.id === id);
-    }
+  const typeIdExists = (id: string) => {
+    return resourceTypes.some(item => item.id === id);
   };
 
-  // Validate form input
-  const validateForm = (item: Item, collection: 'subjects' | 'education_levels', isEdit = false) => {
+  // Check if difficulty value already exists
+  const difficultyValueExists = (value: number) => {
+    return difficultyLevels.some(item => item.value === value);
+  };
+
+  // Validate type form input
+  const validateTypeForm = (item: ResourceType, isEdit = false) => {
     if (!item.id.trim()) {
       showNotification('L\'identifiant est obligatoire', 'error');
       return false;
@@ -124,9 +132,9 @@ export default function SubjectsManager() {
     }
     
     // Only check for duplicates when creating a new item or changing the ID
-    if (!isEdit || (isEdit && item.id !== editForm.id)) {
-      if (idExists(item.id, collection)) {
-        showNotification(`Cet identifiant existe déjà dans la collection ${collection}`, 'error');
+    if (!isEdit || (isEdit && item.id !== editTypeForm.id)) {
+      if (typeIdExists(item.id)) {
+        showNotification('Cet identifiant existe déjà', 'error');
         return false;
       }
     }
@@ -134,14 +142,37 @@ export default function SubjectsManager() {
     return true;
   };
 
-  // Add a new subject
-  const addSubject = async () => {
-    if (!validateForm(newSubject, 'subjects')) return;
+  // Validate difficulty form input
+  const validateDifficultyForm = (item: DifficultyLevel, isEdit = false) => {
+    if (item.value < 1 || item.value > 5) {
+      showNotification('La valeur doit être entre 1 et 5', 'error');
+      return false;
+    }
+    
+    if (!item.label.trim()) {
+      showNotification('Le libellé est obligatoire', 'error');
+      return false;
+    }
+    
+    // Only check for duplicates when creating a new item or changing the value
+    if (!isEdit || (isEdit && item.value !== editDifficultyForm.value)) {
+      if (difficultyValueExists(item.value)) {
+        showNotification('Cette valeur existe déjà', 'error');
+        return false;
+      }
+    }
+    
+    return true;
+  };
+
+  // Add a new resource type
+  const addResourceType = async () => {
+    if (!validateTypeForm(newType)) return;
     
     setProcessing(true);
     try {
       // First check if ID already exists
-      const checkQuery = query(collection(db, 'subjects'), where('id', '==', newSubject.id));
+      const checkQuery = query(collection(db, 'resource_types'), where('id', '==', newType.id));
       const checkSnapshot = await getDocs(checkQuery);
       
       if (!checkSnapshot.empty) {
@@ -150,176 +181,179 @@ export default function SubjectsManager() {
         return;
       }
       
-      await addDoc(collection(db, 'subjects'), {
-        id: newSubject.id,
-        label: newSubject.label
+      await addDoc(collection(db, 'resource_types'), {
+        id: newType.id,
+        label: newType.label
       });
       
       // Refresh the list
-      await fetchSubjects();
+      await fetchResourceTypes();
       
       // Reset the form
-      setNewSubject({ id: '', label: '' });
+      setNewType({ id: '', label: '' });
       
-      showNotification('Matière ajoutée avec succès', 'success');
+      showNotification('Type de ressource ajouté avec succès', 'success');
     } catch (error) {
-      console.error('Error adding subject:', error);
-      showNotification('Erreur lors de l\'ajout de la matière', 'error');
+      console.error('Error adding resource type:', error);
+      showNotification('Erreur lors de l\'ajout du type de ressource', 'error');
     } finally {
       setProcessing(false);
     }
   };
 
-  // Add a new education level
-  const addEducationLevel = async () => {
-    if (!validateForm(newLevel, 'education_levels')) return;
+  // Add a new difficulty level
+  const addDifficultyLevel = async () => {
+    if (!validateDifficultyForm(newDifficulty)) return;
     
     setProcessing(true);
     try {
-      // First check if ID already exists
-      const checkQuery = query(collection(db, 'education_levels'), where('id', '==', newLevel.id));
+      // First check if value already exists
+      const checkQuery = query(collection(db, 'difficulty_levels'), where('value', '==', newDifficulty.value));
       const checkSnapshot = await getDocs(checkQuery);
       
       if (!checkSnapshot.empty) {
-        showNotification('Cet identifiant existe déjà', 'error');
+        showNotification('Cette valeur existe déjà', 'error');
         setProcessing(false);
         return;
       }
       
-      await addDoc(collection(db, 'education_levels'), {
-        id: newLevel.id,
-        label: newLevel.label
+      await addDoc(collection(db, 'difficulty_levels'), {
+        value: newDifficulty.value,
+        label: newDifficulty.label
       });
       
       // Refresh the list
-      await fetchEducationLevels();
+      await fetchDifficultyLevels();
       
       // Reset the form
-      setNewLevel({ id: '', label: '' });
+      setNewDifficulty({ value: 1, label: '' });
       
-      showNotification('Niveau ajouté avec succès', 'success');
+      showNotification('Niveau de difficulté ajouté avec succès', 'success');
     } catch (error) {
-      console.error('Error adding education level:', error);
-      showNotification('Erreur lors de l\'ajout du niveau', 'error');
+      console.error('Error adding difficulty level:', error);
+      showNotification('Erreur lors de l\'ajout du niveau de difficulté', 'error');
     } finally {
       setProcessing(false);
     }
   };
 
-  // Start editing an item
-  const startEdit = (item: Item, type: 'subject' | 'level') => {
-    setEditForm({ ...item });
-    if (type === 'subject') {
-      setEditingSubject(item.docId || null);
-      setEditingLevel(null);
-    } else {
-      setEditingLevel(item.docId || null);
-      setEditingSubject(null);
-    }
+  // Start editing a resource type
+  const startEditType = (type: ResourceType) => {
+    setEditTypeForm({ ...type });
+    setEditingType(type.docId || null);
+    setEditingDifficulty(null);
+  };
+
+  // Start editing a difficulty level
+  const startEditDifficulty = (difficulty: DifficultyLevel) => {
+    setEditDifficultyForm({ ...difficulty });
+    setEditingDifficulty(difficulty.docId || null);
+    setEditingType(null);
   };
 
   // Cancel editing
   const cancelEdit = () => {
-    setEditingSubject(null);
-    setEditingLevel(null);
-    setEditForm({ id: '', label: '' });
+    setEditingType(null);
+    setEditingDifficulty(null);
+    setEditTypeForm({ id: '', label: '' });
+    setEditDifficultyForm({ value: 1, label: '' });
   };
 
-  // Save edited subject
-  const saveEditedSubject = async () => {
-    if (!editingSubject) return;
-    if (!validateForm(editForm, 'subjects', true)) return;
+  // Save edited resource type
+  const saveEditedType = async () => {
+    if (!editingType) return;
+    if (!validateTypeForm(editTypeForm, true)) return;
     
     setProcessing(true);
     try {
-      const docRef = doc(db, 'subjects', editingSubject);
+      const docRef = doc(db, 'resource_types', editingType);
       await updateDoc(docRef, {
-        id: editForm.id,
-        label: editForm.label
+        id: editTypeForm.id,
+        label: editTypeForm.label
       });
       
       // Refresh the list
-      await fetchSubjects();
+      await fetchResourceTypes();
       
       // Reset edit state
-      setEditingSubject(null);
-      setEditForm({ id: '', label: '' });
+      setEditingType(null);
+      setEditTypeForm({ id: '', label: '' });
       
-      showNotification('Matière mise à jour avec succès', 'success');
+      showNotification('Type de ressource mis à jour avec succès', 'success');
     } catch (error) {
-      console.error('Error updating subject:', error);
-      showNotification('Erreur lors de la mise à jour de la matière', 'error');
+      console.error('Error updating resource type:', error);
+      showNotification('Erreur lors de la mise à jour du type de ressource', 'error');
     } finally {
       setProcessing(false);
     }
   };
 
-  // Save edited education level
-  const saveEditedLevel = async () => {
-    if (!editingLevel) return;
-    if (!validateForm(editForm, 'education_levels', true)) return;
+  // Save edited difficulty level
+  const saveEditedDifficulty = async () => {
+    if (!editingDifficulty) return;
+    if (!validateDifficultyForm(editDifficultyForm, true)) return;
     
     setProcessing(true);
     try {
-      const docRef = doc(db, 'education_levels', editingLevel);
+      const docRef = doc(db, 'difficulty_levels', editingDifficulty);
       await updateDoc(docRef, {
-        id: editForm.id,
-        label: editForm.label
+        value: editDifficultyForm.value,
+        label: editDifficultyForm.label
       });
       
       // Refresh the list
-      await fetchEducationLevels();
+      await fetchDifficultyLevels();
       
       // Reset edit state
-      setEditingLevel(null);
-      setEditForm({ id: '', label: '' });
+      setEditingDifficulty(null);
+      setEditDifficultyForm({ value: 1, label: '' });
       
-      showNotification('Niveau mis à jour avec succès', 'success');
+      showNotification('Niveau de difficulté mis à jour avec succès', 'success');
     } catch (error) {
-      console.error('Error updating education level:', error);
-      showNotification('Erreur lors de la mise à jour du niveau', 'error');
+      console.error('Error updating difficulty level:', error);
+      showNotification('Erreur lors de la mise à jour du niveau de difficulté', 'error');
     } finally {
       setProcessing(false);
     }
   };
 
-  // Delete a subject
-  const deleteSubject = async (docId: string) => {
+  // Delete a resource type
+  const deleteResourceType = async (docId: string) => {
     setProcessing(true);
     try {
-      await deleteDoc(doc(db, 'subjects', docId));
+      await deleteDoc(doc(db, 'resource_types', docId));
       
       // Refresh the list
-      await fetchSubjects();
+      await fetchResourceTypes();
       
       // Reset state
-      setDeleteConfirmSubject(null);
+      setDeleteConfirmType(null);
       
-      showNotification('Matière supprimée avec succès', 'success');
+      showNotification('Type de ressource supprimé avec succès', 'success');
     } catch (error) {
-      console.error('Error deleting subject:', error);
-      showNotification('Erreur lors de la suppression de la matière', 'error');
+      console.error('Error deleting resource type:', error);
+      showNotification('Erreur lors de la suppression du type de ressource', 'error');
     } finally {
       setProcessing(false);
     }
   };
 
-  // Delete an education level
-  const deleteLevel = async (docId: string) => {
+  // Delete a difficulty level
+  const deleteDifficultyLevel = async (docId: string) => {
     setProcessing(true);
     try {
-      await deleteDoc(doc(db, 'education_levels', docId));
+      await deleteDoc(doc(db, 'difficulty_levels', docId));
       
       // Refresh the list
-      await fetchEducationLevels();
+      await fetchDifficultyLevels();
       
       // Reset state
-      setDeleteConfirmLevel(null);
+      setDeleteConfirmDifficulty(null);
       
-      showNotification('Niveau supprimé avec succès', 'success');
+      showNotification('Niveau de difficulté supprimé avec succès', 'success');
     } catch (error) {
-      console.error('Error deleting education level:', error);
-      showNotification('Erreur lors de la suppression du niveau', 'error');
+      console.error('Error deleting difficulty level:', error);
+      showNotification('Erreur lors de la suppression du niveau de difficulté', 'error');
     } finally {
       setProcessing(false);
     }
@@ -329,7 +363,7 @@ export default function SubjectsManager() {
     <div className="space-y-8">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-          Matières & niveaux
+          Types de ressources & difficultés
         </h1>
       </div>
       
@@ -349,16 +383,16 @@ export default function SubjectsManager() {
       )}
       
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Subjects Section */}
+        {/* Resource Types Section */}
         <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm">
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
-            Matières
+            Types de ressources
           </h2>
           
-          {/* Add New Subject Form */}
+          {/* Add New Type Form */}
           <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
             <h3 className="text-sm font-medium text-blue-700 dark:text-blue-400 mb-4">
-              Ajouter une nouvelle matière
+              Ajouter un nouveau type
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <div>
@@ -367,9 +401,9 @@ export default function SubjectsManager() {
                 </label>
                 <input
                   type="text"
-                  value={newSubject.id}
-                  onChange={(e) => setNewSubject(prev => ({ ...prev, id: e.target.value }))}
-                  placeholder="ex: math"
+                  value={newType.id}
+                  onChange={(e) => setNewType(prev => ({ ...prev, id: e.target.value }))}
+                  placeholder="ex: exam"
                   className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 />
               </div>
@@ -379,17 +413,17 @@ export default function SubjectsManager() {
                 </label>
                 <input
                   type="text"
-                  value={newSubject.label}
-                  onChange={(e) => setNewSubject(prev => ({ ...prev, label: e.target.value }))}
-                  placeholder="ex: Mathématiques"
+                  value={newType.label}
+                  onChange={(e) => setNewType(prev => ({ ...prev, label: e.target.value }))}
+                  placeholder="ex: Examen"
                   className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 />
               </div>
             </div>
             <div className="flex justify-end">
               <button
-                onClick={addSubject}
-                disabled={processing || !newSubject.id || !newSubject.label}
+                onClick={addResourceType}
+                disabled={processing || !newType.id || !newType.label}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <Plus className="w-4 h-4" />
@@ -398,7 +432,7 @@ export default function SubjectsManager() {
             </div>
           </div>
           
-          {/* Subjects List */}
+          {/* Resource Types List */}
           <div className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
             <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
               <thead className="bg-gray-50 dark:bg-gray-800">
@@ -415,43 +449,43 @@ export default function SubjectsManager() {
                 </tr>
               </thead>
               <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                {loadingSubjects ? (
+                {loadingTypes ? (
                   <tr>
                     <td colSpan={3} className="px-4 py-3 text-center text-sm text-gray-500 dark:text-gray-400">
                       Chargement...
                     </td>
                   </tr>
-                ) : subjects.length === 0 ? (
+                ) : resourceTypes.length === 0 ? (
                   <tr>
                     <td colSpan={3} className="px-4 py-3 text-center text-sm text-gray-500 dark:text-gray-400">
-                      Aucune matière disponible
+                      Aucun type de ressource disponible
                     </td>
                   </tr>
                 ) : (
-                  subjects.map((subject) => (
-                    <tr key={subject.docId} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                      {editingSubject === subject.docId ? (
+                  resourceTypes.map((type) => (
+                    <tr key={type.docId} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                      {editingType === type.docId ? (
                         <>
                           <td className="px-4 py-2">
                             <input
                               type="text"
-                              value={editForm.id}
-                              onChange={(e) => setEditForm(prev => ({ ...prev, id: e.target.value }))}
+                              value={editTypeForm.id}
+                              onChange={(e) => setEditTypeForm(prev => ({ ...prev, id: e.target.value }))}
                               className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                             />
                           </td>
                           <td className="px-4 py-2">
                             <input
                               type="text"
-                              value={editForm.label}
-                              onChange={(e) => setEditForm(prev => ({ ...prev, label: e.target.value }))}
+                              value={editTypeForm.label}
+                              onChange={(e) => setEditTypeForm(prev => ({ ...prev, label: e.target.value }))}
                               className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                             />
                           </td>
                           <td className="px-4 py-2 text-right">
                             <div className="flex items-center justify-end gap-2">
                               <button
-                                onClick={saveEditedSubject}
+                                onClick={saveEditedType}
                                 disabled={processing}
                                 className="p-1.5 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-full transition-colors"
                                 title="Enregistrer"
@@ -471,17 +505,17 @@ export default function SubjectsManager() {
                       ) : (
                         <>
                           <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                            {subject.id}
+                            {type.id}
                           </td>
                           <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
-                            {subject.label}
+                            {type.label}
                           </td>
                           <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            {deleteConfirmSubject === subject.docId ? (
+                            {deleteConfirmType === type.docId ? (
                               <div className="flex items-center justify-end gap-2">
                                 <span className="text-xs text-red-600 dark:text-red-400">Confirmer ?</span>
                                 <button
-                                  onClick={() => deleteSubject(subject.docId!)}
+                                  onClick={() => deleteResourceType(type.docId!)}
                                   disabled={processing}
                                   className="p-1.5 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-colors"
                                   title="Confirmer"
@@ -489,7 +523,7 @@ export default function SubjectsManager() {
                                   <Check className="w-4 h-4" />
                                 </button>
                                 <button
-                                  onClick={() => setDeleteConfirmSubject(null)}
+                                  onClick={() => setDeleteConfirmType(null)}
                                   className="p-1.5 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
                                   title="Annuler"
                                 >
@@ -499,14 +533,14 @@ export default function SubjectsManager() {
                             ) : (
                               <div className="flex items-center justify-end gap-2">
                                 <button
-                                  onClick={() => startEdit(subject, 'subject')}
+                                  onClick={() => startEditType(type)}
                                   className="p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-full transition-colors"
                                   title="Modifier"
                                 >
                                   <Edit2 className="w-4 h-4" />
                                 </button>
                                 <button
-                                  onClick={() => setDeleteConfirmSubject(subject.docId!)}
+                                  onClick={() => setDeleteConfirmType(type.docId!)}
                                   className="p-1.5 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-colors"
                                   title="Supprimer"
                                 >
@@ -525,27 +559,28 @@ export default function SubjectsManager() {
           </div>
         </div>
 
-        {/* Education Levels Section */}
+        {/* Difficulty Levels Section */}
         <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm">
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
-            Niveaux scolaires
+            Niveaux de difficulté
           </h2>
           
-          {/* Add New Level Form */}
+          {/* Add New Difficulty Level Form */}
           <div className="mb-6 p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
             <h3 className="text-sm font-medium text-purple-700 dark:text-purple-400 mb-4">
-              Ajouter un nouveau niveau
+              Ajouter un nouveau niveau de difficulté
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Identifiant
+                  Valeur (1-5)
                 </label>
                 <input
-                  type="text"
-                  value={newLevel.id}
-                  onChange={(e) => setNewLevel(prev => ({ ...prev, id: e.target.value }))}
-                  placeholder="ex: college"
+                  type="number"
+                  min={1}
+                  max={5}
+                  value={newDifficulty.value}
+                  onChange={(e) => setNewDifficulty(prev => ({ ...prev, value: parseInt(e.target.value) || 1 }))}
                   className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 />
               </div>
@@ -555,17 +590,17 @@ export default function SubjectsManager() {
                 </label>
                 <input
                   type="text"
-                  value={newLevel.label}
-                  onChange={(e) => setNewLevel(prev => ({ ...prev, label: e.target.value }))}
-                  placeholder="ex: Collège"
+                  value={newDifficulty.label}
+                  onChange={(e) => setNewDifficulty(prev => ({ ...prev, label: e.target.value }))}
+                  placeholder="ex: Très facile"
                   className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 />
               </div>
             </div>
             <div className="flex justify-end">
               <button
-                onClick={addEducationLevel}
-                disabled={processing || !newLevel.id || !newLevel.label}
+                onClick={addDifficultyLevel}
+                disabled={processing || !newDifficulty.label || newDifficulty.value < 1 || newDifficulty.value > 5}
                 className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <Plus className="w-4 h-4" />
@@ -574,13 +609,13 @@ export default function SubjectsManager() {
             </div>
           </div>
           
-          {/* Education Levels List */}
+          {/* Difficulty Levels List */}
           <div className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
             <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
               <thead className="bg-gray-50 dark:bg-gray-800">
                 <tr>
                   <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Identifiant
+                    Valeur
                   </th>
                   <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Libellé
@@ -591,43 +626,45 @@ export default function SubjectsManager() {
                 </tr>
               </thead>
               <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                {loadingLevels ? (
+                {loadingDifficulties ? (
                   <tr>
                     <td colSpan={3} className="px-4 py-3 text-center text-sm text-gray-500 dark:text-gray-400">
                       Chargement...
                     </td>
                   </tr>
-                ) : educationLevels.length === 0 ? (
+                ) : difficultyLevels.length === 0 ? (
                   <tr>
                     <td colSpan={3} className="px-4 py-3 text-center text-sm text-gray-500 dark:text-gray-400">
-                      Aucun niveau disponible
+                      Aucun niveau de difficulté disponible
                     </td>
                   </tr>
                 ) : (
-                  educationLevels.map((level) => (
-                    <tr key={level.docId} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                      {editingLevel === level.docId ? (
+                  difficultyLevels.map((difficulty) => (
+                    <tr key={difficulty.docId} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                      {editingDifficulty === difficulty.docId ? (
                         <>
                           <td className="px-4 py-2">
                             <input
-                              type="text"
-                              value={editForm.id}
-                              onChange={(e) => setEditForm(prev => ({ ...prev, id: e.target.value }))}
+                              type="number"
+                              min={1}
+                              max={5}
+                              value={editDifficultyForm.value}
+                              onChange={(e) => setEditDifficultyForm(prev => ({ ...prev, value: parseInt(e.target.value) || 1 }))}
                               className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                             />
                           </td>
                           <td className="px-4 py-2">
                             <input
                               type="text"
-                              value={editForm.label}
-                              onChange={(e) => setEditForm(prev => ({ ...prev, label: e.target.value }))}
+                              value={editDifficultyForm.label}
+                              onChange={(e) => setEditDifficultyForm(prev => ({ ...prev, label: e.target.value }))}
                               className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                             />
                           </td>
                           <td className="px-4 py-2 text-right">
                             <div className="flex items-center justify-end gap-2">
                               <button
-                                onClick={saveEditedLevel}
+                                onClick={saveEditedDifficulty}
                                 disabled={processing}
                                 className="p-1.5 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-full transition-colors"
                                 title="Enregistrer"
@@ -647,17 +684,17 @@ export default function SubjectsManager() {
                       ) : (
                         <>
                           <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                            {level.id}
+                            {difficulty.value}
                           </td>
                           <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
-                            {level.label}
+                            {difficulty.label}
                           </td>
                           <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            {deleteConfirmLevel === level.docId ? (
+                            {deleteConfirmDifficulty === difficulty.docId ? (
                               <div className="flex items-center justify-end gap-2">
                                 <span className="text-xs text-red-600 dark:text-red-400">Confirmer ?</span>
                                 <button
-                                  onClick={() => deleteLevel(level.docId!)}
+                                  onClick={() => deleteDifficultyLevel(difficulty.docId!)}
                                   disabled={processing}
                                   className="p-1.5 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-colors"
                                   title="Confirmer"
@@ -665,7 +702,7 @@ export default function SubjectsManager() {
                                   <Check className="w-4 h-4" />
                                 </button>
                                 <button
-                                  onClick={() => setDeleteConfirmLevel(null)}
+                                  onClick={() => setDeleteConfirmDifficulty(null)}
                                   className="p-1.5 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
                                   title="Annuler"
                                 >
@@ -675,14 +712,14 @@ export default function SubjectsManager() {
                             ) : (
                               <div className="flex items-center justify-end gap-2">
                                 <button
-                                  onClick={() => startEdit(level, 'level')}
+                                  onClick={() => startEditDifficulty(difficulty)}
                                   className="p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-full transition-colors"
                                   title="Modifier"
                                 >
                                   <Edit2 className="w-4 h-4" />
                                 </button>
                                 <button
-                                  onClick={() => setDeleteConfirmLevel(level.docId!)}
+                                  onClick={() => setDeleteConfirmDifficulty(difficulty.docId!)}
                                   className="p-1.5 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-colors"
                                   title="Supprimer"
                                 >
