@@ -8,6 +8,7 @@ import Login from './components/Login';
 import HomeworkHistory from './components/HomeworkHistory';
 import AdminPanel from './components/AdminPanel';
 import SettingsPage from './components/Settings';
+import Revisions from './components/Revisions'; 
 import { useAuth } from './contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
 
@@ -17,6 +18,7 @@ function App() {
   const [showHomework, setShowHomework] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
+  const [showRevisions, setShowRevisions] = useState(false);
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [redirectToHomework, setRedirectToHomework] = useState(false);
   const [adminCheckComplete, setAdminCheckComplete] = useState(false);
@@ -50,6 +52,11 @@ function App() {
 
   const toggleDarkMode = () => {
     setIsDarkMode(!isDarkMode);
+    if (!isDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
   };
 
   useEffect(() => {
@@ -135,6 +142,10 @@ function App() {
         <HomeworkHistory />
       </div>
     );
+  }
+
+  if (showRevisions) {
+    return <Revisions onBack={() => setShowRevisions(false)} />;
   }
 
   return (
@@ -258,11 +269,14 @@ function App() {
               </div>
 
               {/* Révisions Card */}
-              <div className={`p-6 rounded-2xl ${
-                isDarkMode 
-                  ? 'bg-gradient-to-br from-yellow-600/20 to-orange-600/20 border border-gray-700' 
-                  : 'bg-gradient-to-br from-yellow-50 to-orange-50 border border-gray-100'
-              } hover:scale-105 transition-all duration-300 cursor-pointer`}>
+              <div 
+                onClick={() => setShowRevisions(true)}
+                className={`p-6 rounded-2xl ${
+                  isDarkMode 
+                    ? 'bg-gradient-to-br from-yellow-600/20 to-orange-600/20 border border-gray-700' 
+                    : 'bg-gradient-to-br from-yellow-50 to-orange-50 border border-gray-100'
+                } hover:scale-105 transition-all duration-300 cursor-pointer`}
+              >
                 <div className="flex items-center justify-center w-14 h-14 rounded-xl bg-gradient-to-r from-yellow-500 to-orange-500 mb-6">
                   <BookOpen className="text-white" size={24} />
                 </div>
@@ -362,7 +376,10 @@ function App() {
                 </div>
                 <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'} group-hover:text-blue-500`}>Devoirs</span>
               </button>
-              <button className="flex flex-col items-center gap-1 group">
+              <button 
+                onClick={() => setShowRevisions(true)}
+                className="flex flex-col items-center gap-1 group"
+              >
                 <div className={`p-2 rounded-xl group-hover:bg-blue-100 transition-colors ${isDarkMode ? 'group-hover:bg-gray-700' : ''}`}>
                   <BookOpen size={24} className={`${isDarkMode ? 'text-white' : 'text-gray-600'} group-hover:text-blue-500`} />
                 </div>
