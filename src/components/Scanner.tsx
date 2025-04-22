@@ -392,7 +392,7 @@ export default function Scanner({ onBack }: ScannerProps) {
               <div 
                 className={`h-full p-8 rounded-2xl border ${
                   isDragging 
-                    ? 'border-green-400 bg-green-50 dark:bg-green-900/20' 
+                    ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20' 
                     : 'border-dashed border-gray-300 dark:border-gray-600'
                 } transition-all duration-300 cursor-pointer`}
                 onDragOver={handleDragOver}
@@ -401,8 +401,8 @@ export default function Scanner({ onBack }: ScannerProps) {
               >
                 <div className="text-center">
                   <div className="mb-6">
-                    <div className="w-16 h-16 mx-auto rounded-full bg-green-100/50 dark:bg-green-900/30 flex items-center justify-center">
-                      <Upload className="w-8 h-8 text-green-600 dark:text-green-400" />
+                    <div className="w-16 h-16 mx-auto rounded-full bg-blue-100/50 dark:bg-blue-900/30 flex items-center justify-center">
+                      <Upload className="w-8 h-8 text-blue-600 dark:text-blue-400" />
                     </div>
                   </div>
                   <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-2">
@@ -440,8 +440,8 @@ export default function Scanner({ onBack }: ScannerProps) {
               >
                 <div className="text-center">
                   <div className="mb-6">
-                    <div className="w-16 h-16 mx-auto rounded-full bg-green-100/50 dark:bg-green-900/30 flex items-center justify-center">
-                      <CameraIcon className="w-8 h-8 text-green-600 dark:text-green-400" />
+                    <div className="w-16 h-16 mx-auto rounded-full bg-purple-100/50 dark:bg-purple-900/30 flex items-center justify-center">
+                      <CameraIcon className="w-8 h-8 text-purple-600 dark:text-purple-400" />
                     </div>
                   </div>
                   <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-2">
@@ -456,10 +456,10 @@ export default function Scanner({ onBack }: ScannerProps) {
           </div>
 
           {/* Tips Section */}
-          <div className="mt-8 p-6 rounded-2xl bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800">
+          <div className="mt-8 p-6 rounded-2xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800">
             <div className="flex items-start gap-4">
               <div className="flex-shrink-0">
-                <HelpCircle className="w-6 h-6 text-green-600 dark:text-green-400" />
+                <HelpCircle className="w-6 h-6 text-blue-600 dark:text-blue-400" />
               </div>
               <div>
                 <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-3">
@@ -467,19 +467,19 @@ export default function Scanner({ onBack }: ScannerProps) {
                 </h3>
                 <ul className="space-y-2 text-gray-600 dark:text-gray-400">
                   <li className="flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
+                    <AlertCircle className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                     Assurez-vous que le document est bien éclairé
                   </li>
                   <li className="flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
+                    <AlertCircle className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                     Évitez les ombres et les reflets
                   </li>
                   <li className="flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
+                    <AlertCircle className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                     Placez le document sur une surface plane
                   </li>
                   <li className="flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
+                    <AlertCircle className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                     Cadrez bien tous les exercices dans l'image
                   </li>
                 </ul>

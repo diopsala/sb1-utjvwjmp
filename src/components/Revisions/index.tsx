@@ -207,6 +207,7 @@ export default function Revisions({ onBack }: { onBack: () => void }) {
         collection(db, 'resources'),
         where('subject', '==', subject.id),
         where('difficulty', '<=', difficulty),
+        orderBy(firebase.firestore.FieldPath.documentId()),
         limit(quizSettings.revisionFileLimit || 3)
       );
       
@@ -373,19 +374,22 @@ export default function Revisions({ onBack }: { onBack: () => void }) {
       else if (difficulty === 4) questionFormat = 'mcq,open';
       else if (difficulty === 5) questionFormat = 'open'; // Hardest: open questions only
       
-      // Prepare prompt for GPT-4o
+      // Prepare prompt for GPT-4o with strict instructions for JSON output
       const prompt = {
         role: 'system',
         content: `Tu es un professeur virtuel. Génère un quiz en ${subject.label}, niveau ${difficulty}/5, 
-        à partir des contenus suivants : ${resources.map(r => r.title).join(', ')}. 
+        à partir des contenus disponibles dans les ressources suivantes : ${resources.map(r => r.file_url).join(', ')}. 
         Format : ${questionFormat}, Langue : ${resources[0].language === 'en' ? 'anglais' : 'français'}.
         
-        Génère exactement ${settings.questionsPerQuiz} questions. Respecte strictement le format JSON suivant :
+        Génère exactement ${settings.questionsPerQuiz} questions. 
+
+        IMPORTANT: Ta réponse doit être UNIQUEMENT un objet JSON valide, sans texte avant ou après, strictement au format suivant:
         
         {
           "title": "Titre du quiz",
           "subject": "${subject.label}",
           "difficulty": ${difficulty},
+          "basedOnResources": true,
           "questions": [
             {
               "id": 1,
@@ -397,16 +401,18 @@ export default function Revisions({ onBack }: { onBack: () => void }) {
           ]
         }
         
-        Règles importantes :
+        Règles importantes:
         - Pour les questions MCQ, inclu toujours les choix A, B, C, D et indique la bonne réponse par sa lettre
         - Pour les true_false, indique "true" ou "false" comme réponse
         - Pour les open, fournis une réponse modèle pour l'évaluation
         - Les questions doivent être pertinentes par rapport au contenu des ressources
         - Adapte la difficulté au niveau demandé (${difficulty}/5)
         - IMPORTANT: Assure-toi que le JSON est valide sans erreurs de syntaxe 
-        - IMPORTANT: Réponds UNIQUEMENT avec le JSON, sans texte avant ou après
-        - IMPORTANT: Vérifie bien que le JSON est correct et parsable en JavaScript`
+        - CRITIQUE: Réponds UNIQUEMENT avec le JSON, sans texte avant ou après
+        - FONDAMENTAL: Si tu ne peux pas accéder au contenu des ressources, génère quand même un quiz pertinent sur le sujet et indique basedOnResources: false`
       };
+      
+      console.log("Sending prompt to OpenAI:", subject.label, difficulty);
       
       // Make API call to OpenAI with resource contents
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -421,7 +427,7 @@ export default function Revisions({ onBack }: { onBack: () => void }) {
             prompt,
             {
               role: 'user', 
-              content: `Génère un quiz pour réviser en ${subject.label}, niveau de difficulté ${difficulty}/5.`
+              content: `Génère un quiz pour réviser en ${subject.label}, niveau de difficulté ${difficulty}/5, en te basant sur les ressources dont les liens sont fournis. Si tu ne peux pas accéder au contenu des ressources, génère un quiz pertinent pour cette matière et ce niveau.`
             }
           ],
           temperature: 0.7,
@@ -430,7 +436,9 @@ export default function Revisions({ onBack }: { onBack: () => void }) {
       });
       
       if (!response.ok) {
-        throw new Error("Erreur lors de la génération du quiz avec l'IA");
+        const errorData = await response.json();
+        console.error("OpenAI API Error:", errorData);
+        throw new Error(`Erreur API: ${errorData.error?.message || response.statusText}`);
       }
       
       const data = await response.json();
@@ -446,36 +454,52 @@ export default function Revisions({ onBack }: { onBack: () => void }) {
       // Extract JSON from response
       let quizData: Quiz;
       try {
-        // Find JSON in the response (it might be surrounded by text)
-        const jsonMatch = quizContent.match(/\{[\s\S]*\}/);
+        // Improved JSON extraction logic
+        // First, try to find a JSON structure in the response
+        const jsonMatch = quizContent.match(/(\{[\s\S]*\})/);
+        let jsonString = '';
         
-        if (!jsonMatch) {
-          throw new Error("Format JSON non trouvé dans la réponse");
+        if (jsonMatch) {
+          // Use the first match which should be the entire JSON object
+          jsonString = jsonMatch[0];
+          console.log("Found potential JSON structure:", jsonString.substring(0, 100) + "...");
+        } else {
+          // If we can't find a JSON pattern, log and throw an error
+          console.error("No JSON pattern found in response:", quizContent);
+          throw new Error(`Format JSON non trouvé dans la réponse. Réponse: ${quizContent.substring(0, 100)}...`);
         }
         
-        const jsonString = jsonMatch[0];
-        console.log("Extracted JSON string:", jsonString);
-        
-        // Try to parse the JSON
+        // Try to parse the extracted JSON
         try {
           quizData = JSON.parse(jsonString);
+          console.log("Successfully parsed extracted JSON");
         } catch (parseError) {
-          // If parsing fails, try to clean the string
-          console.error("Initial JSON parsing failed:", parseError);
+          console.error("Error parsing extracted JSON:", parseError, "String:", jsonString);
           
-          // Try to clean quotation marks and escape characters
-          const cleanedJson = jsonString
-            .replace(/\\"/g, '"') // Replace escaped quotes
-            .replace(/\\n/g, ' ') // Replace newlines
-            .replace(/\\t/g, ' ') // Replace tabs
-            .replace(/\s+/g, ' ') // Normalize whitespace
-            .replace(/"\s+"/g, '""') // Fix spaces between quotes
-            .replace(/"([^"]*)":\s*"([^"]*)"/g, '"$1":"$2"'); // Fix spacing in key-value pairs
+          // More aggressive JSON extraction - look for any object pattern
+          const objectMatch = quizContent.match(/(\{[^{}]*\{[^{}]*\}[^{}]*\})/g) || 
+                             quizContent.match(/(\{[^{}]*\})/g);
+          
+          if (objectMatch && objectMatch.length > 0) {
+            // Try each potential JSON match until one works
+            for (const potentialJson of objectMatch) {
+              try {
+                quizData = JSON.parse(potentialJson);
+                console.log("Successfully parsed alternative JSON structure");
+                break;
+              } catch (e) {
+                console.log("Failed parsing potential JSON:", potentialJson.substring(0, 50) + "...");
+              }
+            }
             
-          console.log("Cleaned JSON string:", cleanedJson);
-          
-          // Try parsing the cleaned JSON
-          quizData = JSON.parse(cleanedJson);
+            // If we still don't have a valid quizData, throw an error
+            if (!quizData) {
+              throw new Error(`Impossible de parser un JSON valide à partir de la réponse`);
+            }
+          } else {
+            // If no object patterns found, fall back to generating a quiz ourselves
+            throw new Error("Pas de structures JSON valides détectées dans la réponse");
+          }
         }
         
         // Validate quiz structure
@@ -484,17 +508,20 @@ export default function Revisions({ onBack }: { onBack: () => void }) {
         }
         
         if (!quizData.questions || !Array.isArray(quizData.questions)) {
+          console.error("Invalid quiz structure:", quizData);
           throw new Error("Le quiz ne contient pas de tableau de questions valide");
         }
         
         // Validate individual questions
         for (const question of quizData.questions) {
           if (!question.id || !question.text || !question.type || !question.answer) {
+            console.error("Invalid question:", question);
             throw new Error(`Question invalide: ${JSON.stringify(question)}`);
           }
           
           // Ensure MCQ questions have choices
           if (question.type === 'mcq' && (!question.choices || !Array.isArray(question.choices) || question.choices.length < 2)) {
+            console.error("Invalid MCQ question:", question);
             throw new Error(`Les options pour la QCM ${question.id} sont manquantes ou invalides`);
           }
         }
@@ -514,10 +541,139 @@ export default function Revisions({ onBack }: { onBack: () => void }) {
         quizData.completed = false;
         quizData.startTime = new Date().toISOString();
         
+        // If there's no explicit basedOnResources field, default to true
+        if (quizData.basedOnResources === undefined) {
+          quizData.basedOnResources = true;
+        }
+        
         return quizData;
       } catch (error) {
         console.error("Error parsing quiz JSON:", error);
-        console.error("Attempted to parse:", quizContent);
+        console.error("Full response content:", quizContent);
+        
+        // Try to generate a fallback quiz with basic questions if parsing fails
+        if (quizContent && quizContent.length > 20) {
+          try {
+            // Make a second attempt with a more explicit prompt
+            console.log("Making second attempt with explicit JSON formatting prompt");
+            
+            const fallbackResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                model: 'gpt-4o',
+                messages: [
+                  {
+                    role: 'system',
+                    content: `Tu es un générateur de quiz. Tu dois produire UNIQUEMENT un objet JSON valide, sans aucun texte avant ou après. Retourne STRICTEMENT ce format:
+                    
+                    {
+                      "title": "Quiz de ${subject.label}",
+                      "subject": "${subject.label}",
+                      "difficulty": ${difficulty},
+                      "basedOnResources": false,
+                      "questions": [
+                        {
+                          "id": 1,
+                          "text": "Question 1",
+                          "type": "mcq",
+                          "choices": ["Option A", "Option B", "Option C", "Option D"],
+                          "answer": "A"
+                        },
+                        {
+                          "id": 2,
+                          "text": "Question 2",
+                          "type": "true_false",
+                          "answer": "true"
+                        }
+                      ]
+                    }
+                    
+                    Génère exactement ${Math.min(5, settings.questionsPerQuiz)} questions simples sur ${subject.label}.
+                    IMPORTANT: Retourne UNIQUEMENT le JSON brut sans aucun autre texte.`
+                  }
+                ],
+                temperature: 0.5,
+                max_tokens: 1000,
+              }),
+            });
+            
+            if (!fallbackResponse.ok) {
+              throw new Error("Échec de la génération du quiz de secours");
+            }
+            
+            const fallbackData = await fallbackResponse.json();
+            const fallbackContent = fallbackData.choices[0]?.message?.content;
+            
+            if (!fallbackContent) {
+              throw new Error("Réponse vide lors de la génération du quiz de secours");
+            }
+            
+            console.log("Fallback response:", fallbackContent);
+            
+            // Apply the same JSON extraction logic to the fallback content
+            const fallbackJsonMatch = fallbackContent.match(/(\{[\s\S]*\})/);
+            
+            if (!fallbackJsonMatch) {
+              throw new Error("Pas de JSON trouvé dans la réponse de secours");
+            }
+            
+            const fallbackJsonString = fallbackJsonMatch[0];
+            const fallbackQuiz = JSON.parse(fallbackJsonString);
+            
+            // Add user response field to each question
+            fallbackQuiz.questions = fallbackQuiz.questions.map(q => ({
+              ...q,
+              userResponse: null,
+              isCorrect: null,
+              feedback: null
+            }));
+            
+            // Add metadata
+            fallbackQuiz.totalQuestions = fallbackQuiz.questions.length;
+            fallbackQuiz.currentQuestion = 0;
+            fallbackQuiz.score = null;
+            fallbackQuiz.completed = false;
+            fallbackQuiz.startTime = new Date().toISOString();
+            fallbackQuiz.basedOnResources = false;
+            
+            console.log("Successfully generated fallback quiz");
+            return fallbackQuiz;
+          } catch (fallbackError) {
+            console.error("Fallback quiz generation failed:", fallbackError);
+            
+            // Last resort - create a minimal quiz manually
+            const manualQuiz: Quiz = {
+              title: `Quiz de ${subject.label}`,
+              subject: subject.label,
+              difficulty: difficulty,
+              basedOnResources: false,
+              questions: [
+                {
+                  id: 1,
+                  text: `Question de ${subject.label} de niveau ${difficulty}`,
+                  type: 'mcq',
+                  choices: ['Option A', 'Option B', 'Option C', 'Option D'],
+                  answer: 'A',
+                  userResponse: null,
+                  isCorrect: null,
+                  feedback: null
+                }
+              ],
+              totalQuestions: 1,
+              currentQuestion: 0,
+              score: null,
+              completed: false,
+              startTime: new Date().toISOString()
+            };
+            
+            return manualQuiz;
+          }
+        }
+        
         throw new Error("Erreur lors de l'analyse du quiz généré");
       }
     } catch (error) {

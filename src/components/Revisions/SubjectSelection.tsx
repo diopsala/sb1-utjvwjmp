@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronRight, Sparkles, Clock as LockClosed, Medal, ChevronDown, EyeOff, LineChart, Award, Trophy } from 'lucide-react';
+import { ChevronRight, Sparkles, Clock as LockClosed, Medal, ChevronDown, EyeOff, LineChart, Award, Trophy, Database } from 'lucide-react';
 import { Subject } from '../../types/subjects';
 import { RevisionPerformance, UserStats } from '../../types/revisions';
 
@@ -386,6 +386,11 @@ export default function SubjectSelection({
               d'affronter des défis de plus en plus complexes. Chaque quiz est généré à partir 
               des ressources pédagogiques correspondant à votre matière et niveau.
             </p>
+            
+            <div className="flex items-center gap-2 mt-2">
+              <Database className="w-4 h-4 text-blue-400 opacity-60" />
+              <span className="text-xs text-blue-400 opacity-60">Quiz basés sur des ressources pédagogiques</span>
+            </div>
             
             <h4 className={`font-medium mt-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
               Niveaux de difficulté:

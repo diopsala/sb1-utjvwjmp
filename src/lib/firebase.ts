@@ -51,7 +51,7 @@ try {
 export { db, auth };
 
 // Helper functions for database operations
-export const createHomework = async (data) => {
+const createHomework = async (data) => {
   const homeworkRef = doc(collection(db, 'homework'));
   await setDoc(homeworkRef, {
     ...data,
@@ -61,17 +61,17 @@ export const createHomework = async (data) => {
   return homeworkRef.id;
 };
 
-export const updateHomework = async (id, data) => {
+const updateHomework = async (id, data) => {
   const homeworkRef = doc(db, 'homework', id);
   await updateDoc(homeworkRef, data);
 };
 
-export const deleteHomework = async (id) => {
+const deleteHomework = async (id) => {
   const homeworkRef = doc(db, 'homework', id);
   await deleteDoc(homeworkRef);
 };
 
-export const getHomeworks = async (filters = {}) => {
+const getHomeworks = async (filters = {}) => {
   let baseQuery = query(
     collection(db, 'homework'),
     where('user_id', '==', auth.currentUser?.uid)

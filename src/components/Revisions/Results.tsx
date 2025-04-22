@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ChevronRight, CheckCircle, XCircle, Sparkles, RotateCcw, TrendingUp, Award, Download } from 'lucide-react';
+import { ChevronRight, CheckCircle, XCircle, Sparkles, RotateCcw, TrendingUp, Award, Download, Database } from 'lucide-react';
 import { Subject } from '../../types/subjects';
 import { Quiz } from '../../types/revisions';
 import { doc, updateDoc } from 'firebase/firestore';
@@ -136,6 +136,14 @@ export default function Results({
           <p className={`${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
             {quiz.title || `Quiz de ${subject.label}`} · Niveau {quiz.difficulty}
           </p>
+          {quiz.basedOnResources !== undefined && (
+            <div className="flex items-center justify-center gap-1 mt-1">
+              <Database className={`w-4 h-4 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'} opacity-70`} />
+              <span className={`text-xs ${isDarkMode ? 'text-blue-400' : 'text-blue-600'} opacity-70`}>
+                {quiz.basedOnResources ? 'Basé sur des ressources pédagogiques' : 'Quiz générique'}
+              </span>
+            </div>
+          )}
         </div>
         
         <div className="flex flex-col md:flex-row justify-center gap-8 mb-8">

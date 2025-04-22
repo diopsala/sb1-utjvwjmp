@@ -31,6 +31,7 @@ export interface Quiz {
   completed: boolean;
   startTime: string;
   endTime?: string;
+  basedOnResources?: boolean; // Indicates if the quiz was generated from Cloudinary resources
 }
 
 export interface RevisionPerformance {

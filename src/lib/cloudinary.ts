@@ -27,7 +27,7 @@ export const getFileExtension = (filename: string): string => {
   return filename.split('.').pop()?.toLowerCase() || '';
 };
 
-export const extractPublicId = (url: string): string | null => {
+const extractPublicId = (url: string): string | null => {
   const matches = url.match(/\/upload\/(?:v\d+\/)?(.+?)(?:\.\w+)?$/);
   return matches ? matches[1] : null;
 };
