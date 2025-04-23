@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, doc, setDoc, updateDoc, deleteDoc, query, where, orderBy, getDocs } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 // Log environment variables availability (without exposing values)
 console.log('Environment variables status:', {
@@ -35,12 +36,14 @@ const validateConfig = (config: Record<string, string | undefined>) => {
 
 let auth;
 let db;
+let functions;
 
 try {
   validateConfig(firebaseConfig);
   const app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
+  functions = getFunctions(app);
   console.log('Firebase initialized successfully');
 } catch (error) {
   console.error('Error initializing Firebase:', error);
@@ -48,7 +51,85 @@ try {
 }
 
 
-export { db, auth };
+export { db, auth, functions };
+
+// Helper functions for Cloud Functions
+export const getUserStats = async () => {
+  try {
+    const getUserStatsFn = httpsCallable(functions, 'getUserStats');
+    const result = await getUserStatsFn();
+    return result.data;
+  } catch (error) {
+    console.error('Error calling getUserStats function:', error);
+    throw error;
+  }
+};
+
+export const analyzeImageWithAI = async (imageUrl) => {
+  try {
+    // Obtenir le token d'authentification
+    const token = await auth.currentUser?.getIdToken();
+    
+    if (!token) {
+      throw new Error('Non authentifié');
+    }
+
+    // Appel de la fonction Cloud via fetch pour plus de contrôle
+    const functionUrl = `https://${import.meta.env.VITE_FIREBASE_REGION}-${import.meta.env.VITE_FIREBASE_PROJECT_ID}.cloudfunctions.net/analyzeImageWithAI`;
+    
+    const response = await fetch(functionUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ imageUrl }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Erreur lors de l\'analyse');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error calling analyzeImageWithAI function:', error);
+    throw error;
+  }
+};
+
+export const generateCorrection = async (homeworkId) => {
+  try {
+    // Obtenir le token d'authentification
+    const token = await auth.currentUser?.getIdToken();
+    
+    if (!token) {
+      throw new Error('Non authentifié');
+    }
+
+    // Appel de la fonction Cloud via fetch
+    const functionUrl = `https://${import.meta.env.VITE_FIREBASE_REGION}-${import.meta.env.VITE_FIREBASE_PROJECT_ID}.cloudfunctions.net/generateCorrection`;
+    
+    const response = await fetch(functionUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ homeworkId }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Erreur lors de la génération de la correction');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error calling generateCorrection function:', error);
+    throw error;
+  }
+};
 
 // Helper functions for database operations
 const createHomework = async (data) => {

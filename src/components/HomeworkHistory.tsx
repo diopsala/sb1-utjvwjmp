@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { collection, query, where, orderBy, getDocs, deleteDoc, doc, updateDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, generateCorrection } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { Download, Share2, Sparkles, Trash2, ZoomIn, Mail, FileDown, AlertTriangle, ChevronDown, ChevronUp, Facebook, Twitter, Linkedin, Link2, Pin, Star, Filter, Search as SearchIcon } from 'lucide-react';
 import { jsPDF } from 'jspdf';
@@ -509,73 +509,14 @@ export default function HomeworkHistory() {
     
     setProcessingCorrection(homework.id);
     try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o',
-          messages: [
-            {
-              role: 'system',
-              content: `Tu es un prof cool et sympa qui parle de manière directe et familière avec ses élèves. 
-              Ton but est de les aider à comprendre leurs exercices en utilisant un langage simple et accessible.
-              Le document fourni peut avoir plusieurs exercices, il faut tous les traités.
-              
-              Pour chaque exercice, tu dois :
-
-              1. Identifier la matière et le type d'exercice
-              2. Expliquer le problème en langage simple et familier
-              3. Donner la CORRECTION COMPLÈTE et détaillée de l'exercice
-              4. Ajouter des conseils pratiques et des astuces
-
-              Format de ta réponse :
-
-              👋 Hey ! Je vois que tu bosses sur [matière]. Cool !
-
-              📝 Pour cet exercice, voici ce qu'on te demande :
-              [Explication simple de la consigne]
-
-              ✨ Voici la correction complète :
-              [Correction détaillée de l'exercice]
-
-              🔍 Comment j'ai fait pour résoudre ça :
-              [Explication de la méthode]
-
-              💡 Petites astuces pour la prochaine fois :
-              [2-3 conseils pratiques]
-
-              🎯 Pour t'entraîner :
-              [Exercice similaire simplifié]
-
-              N'hésite pas si tu as des questions ! 😊`
-            },
-            {
-              role: 'user',
-              content: `Voici l'exercice à corriger : ${homework.analysis}`
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 1000
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('Erreur lors de la génération de la correction');
+      // Utiliser la fonction Cloud pour générer la correction
+      const result = await generateCorrection(homework.id);
+      
+      if (!result.success) {
+        throw new Error(result.error || "Erreur lors de la génération de la correction");
       }
-
-      const data = await response.json();
-      const correction = data.choices[0]?.message?.content;
-
-      if (!correction) {
-        throw new Error('Réponse invalide du modèle');
-      }
-
-      await updateDoc(doc(db, 'homework', homework.id), {
-        correction
-      });
+      
+      const correction = result.correction;
 
       setHomeworks(prevHomeworks =>
         prevHomeworks.map(hw =>
@@ -586,7 +527,10 @@ export default function HomeworkHistory() {
       setShareStatus({ message: 'Correction générée avec succès !', type: 'success' });
     } catch (error) {
       console.error('Error generating correction:', error);
-      setShareStatus({ message: 'Erreur lors de la génération de la correction', type: 'error' });
+      setShareStatus({ 
+        message: error instanceof Error ? error.message : 'Erreur lors de la génération de la correction', 
+        type: 'error' 
+      });
     } finally {
       setProcessingCorrection(null);
       setTimeout(() => setShareStatus({ message: '', type: '' }), 3000);

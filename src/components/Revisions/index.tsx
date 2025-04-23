@@ -1,8 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
-import { collection, query, where, getDocs, doc, getDoc, orderBy, limit, setDoc } from 'firebase/firestore';
+import { Camera, FolderOpen, BookOpen, BarChart2, Settings, MessageCircle, Search, Sun, Moon, Bell, LogOut, ArrowLeft, Brain, TrendingUp } from 'lucide-react';
+import { collection, doc, getDoc, onSnapshot, query, where, orderBy, limit, startAfter, getDocs, setDoc, documentId } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { ArrowLeft, BookOpen, Brain, TrendingUp } from 'lucide-react';
+import { Shield } from 'lucide-react';
+import Scanner from '../Scanner';
+import Login from '../Login';
+import HomeworkHistory from '../HomeworkHistory';
+import AdminPanel from '../AdminPanel';
+import SettingsPage from '../Settings';
 import SubjectSelection from './SubjectSelection';
 import QuizInterface from './QuizInterface';
 import Results from './Results';
@@ -10,6 +15,7 @@ import RevisionStats from './RevisionStats';
 import { Resource } from '../../types/resources';
 import { Subject } from '../../types/subjects';
 import { Quiz, QuizSettings, RevisionPerformance, UserStats } from '../../types/revisions';
+import { useAuth } from '../../contexts/AuthContext';
 
 enum RevisionStep {
   SUBJECT_SELECTION,
@@ -207,7 +213,7 @@ export default function Revisions({ onBack }: { onBack: () => void }) {
         collection(db, 'resources'),
         where('subject', '==', subject.id),
         where('difficulty', '<=', difficulty),
-        orderBy(firebase.firestore.FieldPath.documentId()),
+        orderBy('difficulty'),
         limit(quizSettings.revisionFileLimit || 3)
       );
       
@@ -218,7 +224,10 @@ export default function Revisions({ onBack }: { onBack: () => void }) {
       }));
       
       if (resourcesData.length === 0) {
-        throw new Error('Aucune ressource disponible pour cette matière et ce niveau de difficulté');
+        // Instead of throwing an error, set error state and return early
+        setError('Aucune ressource disponible pour cette matière et ce niveau de difficulté');
+        setLoading(false);
+        return; // Important: stop execution here
       }
       
       setQuizResources(resourcesData);

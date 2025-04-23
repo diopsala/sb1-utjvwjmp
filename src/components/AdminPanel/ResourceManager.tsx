@@ -14,7 +14,10 @@ import {
   ChevronRight, 
   ArrowDown, 
   ArrowUp,
-  Upload
+  Upload,
+  Tag,
+  XCircle,
+  FileText
 } from 'lucide-react';
 import { 
   collection, 
@@ -83,11 +86,11 @@ const RESOURCE_TYPES = [
 ];
 
 const DIFFICULTY_LEVELS = [
-  { value: 1, label: 'Très facile' },
-  { value: 2, label: 'Facile' },
-  { value: 3, label: 'Moyen' },
-  { value: 4, label: 'Difficile' },
-  { value: 5, label: 'Très difficile' }
+  { value: 1, label: 'Très facile', color: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' },
+  { value: 2, label: 'Facile', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' },
+  { value: 3, label: 'Moyen', color: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400' },
+  { value: 4, label: 'Difficile', color: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400' },
+  { value: 5, label: 'Très difficile', color: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' }
 ];
 
 export default function ResourceManager() {
@@ -133,11 +136,21 @@ export default function ResourceManager() {
     file: null
   });
   
+  // Tag input state
+  const [tagInput, setTagInput] = useState<string>('');
+  const [editTagInput, setEditTagInput] = useState<string>('');
+  
   // Dynamic data from Firestore
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [educationLevels, setEducationLevels] = useState<EducationLevel[]>([]);
   const [loadingSubjects, setLoadingSubjects] = useState(true);
   const [loadingLevels, setLoadingLevels] = useState(true);
+  
+  // Form validation state
+  const [validationErrors, setValidationErrors] = useState<{
+    title?: string;
+    file?: string;
+  }>({});
   
   // File input ref for programmatic clicks
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -295,6 +308,105 @@ export default function ResourceManager() {
     return matches ? matches[1] : null;
   };
 
+  // Handle tag input
+  const handleTagInput = (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean = false) => {
+    if (isEdit) {
+      setEditTagInput(e.target.value);
+    } else {
+      setTagInput(e.target.value);
+    }
+  };
+
+  // Add a tag
+  const addTag = (isEdit: boolean = false) => {
+    const input = isEdit ? editTagInput : tagInput;
+    if (!input.trim()) return;
+
+    const newTags = input.split(',')
+      .map(tag => tag.trim())
+      .filter(tag => tag.length > 0);
+    
+    if (isEdit) {
+      // Add tags to edit form
+      const currentTags = editForm.tags || [];
+      const updatedTags = [...currentTags];
+      
+      newTags.forEach(tag => {
+        if (!currentTags.includes(tag)) {
+          updatedTags.push(tag);
+        }
+      });
+      
+      setEditForm(prev => ({
+        ...prev,
+        tags: updatedTags
+      }));
+      setEditTagInput('');
+    } else {
+      // Add tags to new resource
+      const currentTags = newResource.tags;
+      const updatedTags = [...currentTags];
+      
+      newTags.forEach(tag => {
+        if (!currentTags.includes(tag)) {
+          updatedTags.push(tag);
+        }
+      });
+      
+      setNewResource(prev => ({
+        ...prev,
+        tags: updatedTags
+      }));
+      setTagInput('');
+    }
+  };
+
+  // Handle key down for tag input
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, isEdit: boolean = false) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      addTag(isEdit);
+    }
+  };
+
+  // Remove a tag
+  const removeTag = (tagToRemove: string, isEdit: boolean = false) => {
+    if (isEdit) {
+      setEditForm(prev => ({
+        ...prev,
+        tags: prev.tags?.filter(tag => tag !== tagToRemove) || []
+      }));
+    } else {
+      setNewResource(prev => ({
+        ...prev,
+        tags: prev.tags.filter(tag => tag !== tagToRemove)
+      }));
+    }
+  };
+  
+  // Validate form
+  const validateForm = () => {
+    const errors: {title?: string; file?: string} = {};
+    
+    if (!newResource.title.trim()) {
+      errors.title = 'Le titre est obligatoire';
+    }
+    
+    if (!newResource.file) {
+      errors.file = 'Veuillez sélectionner un fichier';
+    } else {
+      // Validate file type
+      const allowedTypes = ['.pdf', '.doc', '.docx'];
+      const fileExt = `.${getFileExtension(newResource.file.name)}`;
+      if (!allowedTypes.includes(fileExt)) {
+        errors.file = 'Format de fichier non supporté. Formats acceptés: PDF, DOC, DOCX';
+      }
+    }
+    
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   // Create a new resource
   const createResource = async () => {
     if (!currentUser) {
@@ -305,30 +417,7 @@ export default function ResourceManager() {
       return;
     }
     
-    if (!newResource.title) {
-      setNotification({
-        message: 'Le titre est obligatoire',
-        type: 'error'
-      });
-      return;
-    }
-    
-    if (!newResource.file) {
-      setNotification({
-        message: 'Veuillez sélectionner un fichier',
-        type: 'error'
-      });
-      return;
-    }
-    
-    // Validate file type
-    const allowedTypes = ['.pdf', '.doc', '.docx'];
-    const fileExt = `.${getFileExtension(newResource.file.name)}`;
-    if (!allowedTypes.includes(fileExt)) {
-      setNotification({
-        message: 'Format de fichier non supporté. Formats acceptés: PDF, DOC, DOCX',
-        type: 'error'
-      });
+    if (!validateForm()) {
       return;
     }
     
@@ -387,7 +476,9 @@ export default function ResourceManager() {
         year: new Date().getFullYear().toString(),
         file: null
       });
+      setTagInput('');
       setShowCreateModal(false);
+      setValidationErrors({});
       
       // Show success notification
       setNotification({
@@ -518,10 +609,11 @@ export default function ResourceManager() {
       level: resource.level,
       type: resource.type,
       difficulty: resource.difficulty,
-      tags: resource.tags,
+      tags: resource.tags || [],
       language: resource.language,
       year: resource.year
     });
+    setEditTagInput('');
     setShowEditModal(true);
   };
 
@@ -535,6 +627,7 @@ export default function ResourceManager() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       setNewResource(prev => ({ ...prev, file: e.target.files![0] }));
+      setValidationErrors(prev => ({...prev, file: undefined}));
     }
   };
 
@@ -581,6 +674,45 @@ export default function ResourceManager() {
     }
   };
 
+  // Get difficulty label and color
+  const getDifficultyInfo = (difficultyValue: number) => {
+    return DIFFICULTY_LEVELS.find(level => level.value === difficultyValue) || 
+      { value: difficultyValue, label: `Niveau ${difficultyValue}`, color: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300' };
+  };
+
+  // Render tags with tooltip
+  const renderTags = (tags: string[]) => {
+    if (!tags || tags.length === 0) return <span className="text-gray-400 dark:text-gray-500">-</span>;
+
+    const visibleTags = tags.slice(0, 3);
+    const hasMore = tags.length > 3;
+
+    return (
+      <div className="group relative">
+        <div className="flex flex-wrap gap-1 max-w-[200px] overflow-hidden">
+          {visibleTags.map((tag, idx) => (
+            <span 
+              key={idx} 
+              className="px-2 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 whitespace-nowrap"
+            >
+              {tag}
+            </span>
+          ))}
+          {hasMore && (
+            <span className="px-2 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+              +{tags.length - 3}
+            </span>
+          )}
+        </div>
+        
+        {/* Tooltip */}
+        <div className="absolute left-0 mt-2 w-48 p-2 bg-black/80 text-white text-xs rounded shadow-lg z-10 invisible group-hover:visible">
+          {tags.join(', ')}
+        </div>
+      </div>
+    );
+  };
+
   // Filter resources based on search term
   const filteredResources = resources.filter(resource => {
     if (!filters.search) return true;
@@ -590,6 +722,7 @@ export default function ResourceManager() {
       resource.title.toLowerCase().includes(searchLower) ||
       subjects.find(s => s.id === resource.subject)?.label.toLowerCase().includes(searchLower) ||
       RESOURCE_TYPES.find(t => t.id === resource.type)?.label.toLowerCase().includes(searchLower) ||
+      (resource.tags && resource.tags.some(tag => tag.toLowerCase().includes(searchLower))) ||
       formatDate(resource.created_at).toLowerCase().includes(searchLower)
     );
   });
@@ -729,7 +862,10 @@ export default function ResourceManager() {
                     </div>
                   </th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">
-                    Fichier
+                    Difficulté
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">
+                    Tags
                   </th>
                   <th className="px-4 py-3 text-center font-medium text-gray-500 dark:text-gray-400">
                     Actions
@@ -763,15 +899,12 @@ export default function ResourceManager() {
                       {formatDate(resource.created_at)}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <a 
-                        href={resource.file_url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                        <span>Fichier</span>
-                      </a>
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getDifficultyInfo(resource.difficulty).color}`}>
+                        {getDifficultyInfo(resource.difficulty).label}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {renderTags(resource.tags || [])}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex items-center justify-center gap-2">
@@ -846,10 +979,20 @@ export default function ResourceManager() {
                 <input
                   type="text"
                   value={newResource.title}
-                  onChange={(e) => setNewResource(prev => ({ ...prev, title: e.target.value }))}
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  onChange={(e) => {
+                    setNewResource(prev => ({ ...prev, title: e.target.value }));
+                    setValidationErrors(prev => ({...prev, title: undefined}));
+                  }}
+                  className={`w-full px-4 py-2 rounded-lg border ${
+                    validationErrors.title 
+                      ? 'border-red-300 dark:border-red-600' 
+                      : 'border-gray-300 dark:border-gray-600'
+                  } bg-white dark:bg-gray-700 text-gray-900 dark:text-white`}
                   required
                 />
+                {validationErrors.title && (
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{validationErrors.title}</p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -944,46 +1087,96 @@ export default function ResourceManager() {
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Tags (séparés par des virgules)
+                  Tags
                 </label>
-                <input
-                  type="text"
-                  value={newResource.tags.join(', ')}
-                  onChange={(e) => setNewResource(prev => ({ 
-                    ...prev, 
-                    tags: e.target.value.split(',').map(tag => tag.trim()).filter(Boolean)
-                  }))}
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                  placeholder="Ex: grammaire, exercice, test..."
-                />
+                <div className="mb-2 flex flex-wrap gap-2">
+                  {newResource.tags.map((tag, index) => (
+                    <div 
+                      key={index}
+                      className="flex items-center gap-1 px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full"
+                    >
+                      <Tag className="w-3 h-3" />
+                      <span className="text-sm">{tag}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeTag(tag)}
+                        className="text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-200 ml-1"
+                      >
+                        <XCircle className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={tagInput}
+                    onChange={(e) => handleTagInput(e)}
+                    onKeyDown={(e) => handleKeyDown(e)}
+                    className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    placeholder="Ajouter des tags (séparés par des virgules)..."
+                  />
+                  <button
+                    type="button"
+                    onClick={() => addTag()}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Ajouter
+                  </button>
+                </div>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Saisissez un ou plusieurs tags séparés par des virgules ou appuyez sur Entrée après chaque tag.
+                </p>
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Fichier <span className="text-red-500">*</span>
                 </label>
-                <div className="flex items-center gap-4">
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                  >
-                    <Upload className="w-5 h-5" />
-                    Sélectionner un fichier
-                  </button>
-                  <span className="text-sm text-gray-500 dark:text-gray-400">
-                    {newResource.file ? newResource.file.name : 'Aucun fichier sélectionné'}
-                  </span>
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    accept=".pdf,.doc,.docx"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                  />
+                <div 
+                  className={`p-4 border-2 border-dashed rounded-lg ${
+                    validationErrors.file 
+                      ? 'border-red-300 dark:border-red-600 bg-red-50 dark:bg-red-900/20' 
+                      : 'border-gray-300 dark:border-gray-600'
+                  } mb-2`}
+                >
+                  <div className="text-center">
+                    {newResource.file ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <FileText className="w-8 h-8 text-blue-500" />
+                        <span className="text-gray-700 dark:text-gray-300">{newResource.file.name}</span>
+                      </div>
+                    ) : (
+                      <>
+                        <Upload className="mx-auto h-12 w-12 text-gray-400" />
+                        <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                          Cliquez pour sélectionner un fichier ou glissez-déposez
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                          Formats acceptés: PDF, DOC, DOCX. Taille max: 10MB.
+                        </p>
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      id="file-input"
+                      ref={fileInputRef}
+                      accept=".pdf,.doc,.docx"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="mt-3 inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    >
+                      <Upload className="-ml-1 mr-2 h-5 w-5" />
+                      {newResource.file ? 'Changer de fichier' : 'Sélectionner un fichier'}
+                    </button>
+                  </div>
                 </div>
-                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                  Formats acceptés: PDF, DOC, DOCX. Taille max: 10MB.
-                </p>
+                {validationErrors.file && (
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{validationErrors.file}</p>
+                )}
               </div>
             </div>
             
@@ -997,7 +1190,7 @@ export default function ResourceManager() {
               </button>
               <button
                 onClick={createResource}
-                disabled={processing || !newResource.title || !newResource.file}
+                disabled={processing}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Save className="w-4 h-4" />
@@ -1166,17 +1359,46 @@ export default function ResourceManager() {
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Tags (séparés par des virgules)
+                  Tags
                 </label>
-                <input
-                  type="text"
-                  value={editForm.tags ? editForm.tags.join(', ') : ''}
-                  onChange={(e) => setEditForm(prev => ({ 
-                    ...prev, 
-                    tags: e.target.value.split(',').map(tag => tag.trim()).filter(Boolean)
-                  }))}
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                />
+                <div className="mb-2 flex flex-wrap gap-2">
+                  {editForm.tags?.map((tag, index) => (
+                    <div 
+                      key={index}
+                      className="flex items-center gap-1 px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full"
+                    >
+                      <Tag className="w-3 h-3" />
+                      <span className="text-sm">{tag}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeTag(tag, true)}
+                        className="text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-200 ml-1"
+                      >
+                        <XCircle className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={editTagInput}
+                    onChange={(e) => handleTagInput(e, true)}
+                    onKeyDown={(e) => handleKeyDown(e, true)}
+                    className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    placeholder="Ajouter des tags (séparés par des virgules)..."
+                  />
+                  <button
+                    type="button"
+                    onClick={() => addTag(true)}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Ajouter
+                  </button>
+                </div>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Saisissez un ou plusieurs tags séparés par des virgules ou appuyez sur Entrée après chaque tag.
+                </p>
               </div>
             </div>
             
