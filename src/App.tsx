@@ -9,6 +9,7 @@ import HomeworkHistory from './components/HomeworkHistory';
 import AdminPanel from './components/AdminPanel';
 import SettingsPage from './components/Settings';
 import Revisions from './components/Revisions'; 
+import LandingPage from './components/LandingPage'; 
 import { useAuth } from './contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
 
@@ -19,6 +20,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [showRevisions, setShowRevisions] = useState(false);
+  const [showLanding, setShowLanding] = useState(true);
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [redirectToHomework, setRedirectToHomework] = useState(false);
   const [adminCheckComplete, setAdminCheckComplete] = useState(false);
@@ -28,8 +30,11 @@ function App() {
     if (!currentUser) {
       setIsAdmin(false);
       setAdminCheckComplete(true);
+      setShowLanding(true);
       return;
     }
+
+    setShowLanding(false);
 
     const unsubscribe = onSnapshot(
       doc(db, 'users', currentUser.uid),
@@ -69,9 +74,15 @@ function App() {
   const handleLogout = async () => {
     try {
       await logout();
+      setShowLanding(true);
     } catch (error) {
       console.error('Error logging out:', error);
     }
+  };
+
+  const handleLoginClick = () => {
+    setShowLogin(true);
+    setShowLanding(false);
   };
 
   // Only redirect to AdminPanel if isAdmin is explicitly true
@@ -85,6 +96,16 @@ function App() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
       </div>
+    );
+  }
+
+  if (showLanding && !currentUser) {
+    return (
+      <LandingPage 
+        onLogin={handleLoginClick} 
+        isDarkMode={isDarkMode} 
+        toggleDarkMode={toggleDarkMode} 
+      />
     );
   }
 

@@ -6,11 +6,43 @@
   .dark {
     color-scheme: dark;
   }
+
+  @keyframes float {
+    0% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-10px);
+    }
+    100% {
+      transform: translateY(0px);
+    }
+  }
+  
+  @keyframes pulse {
+    0% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.05);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
 }
 
 @layer components {
   .card-hover {
     @apply transform hover:scale-105 transition-all duration-300 cursor-pointer;
+  }
+  
+  .float-animation {
+    animation: float 6s ease-in-out infinite;
+  }
+  
+  .pulse-animation {
+    animation: pulse 3s ease-in-out infinite;
   }
 }
 
