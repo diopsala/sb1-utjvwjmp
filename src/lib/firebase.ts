@@ -51,10 +51,10 @@ try {
 }
 
 
-export { db, auth, functions };
+export { db, auth,  };
 
 // Helper functions for Cloud Functions
-export const getUserStats = async () => {
+const getUserStats = async () => {
   try {
     const getUserStatsFn = httpsCallable(functions, 'getUserStats');
     const result = await getUserStatsFn();

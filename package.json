@@ -14,25 +14,20 @@
     "firebase:deploy": "firebase deploy --only functions",
     "functions:dev": "cd functions && npm run build:watch",
     "dev:full": "concurrently \"npm run dev\" \"npm run functions:dev\""
-
   },
   "dependencies": {
     "@capacitor/camera": "latest",
     "@ionic/pwa-elements": "^3.2.2",
     "@nivo/bar": "^0.84.0",
-    "@nivo/core": "^0.84.0",
     "@nivo/line": "^0.84.0",
     "axios": "^1.6.7",
-    "cloudinary": "^2.0.3",
-    "cloudinary-react": "^1.8.1",
     "firebase": "^10.8.0",
-    "firebase-admin": "^11.11.1",
-    "firebase-functions": "^4.5.0",
     "framer-motion": "^11.0.8",
     "html2canvas": "^1.4.1",
     "jspdf": "^2.5.1",
     "lucide-react": "^0.344.0",
     "react-dom": "^18.3.1",
+    "react": "^18.3.1",
     "react-intersection-observer": "^9.8.1",
     "react-router-dom": "^6.22.3",
     "react-scroll-parallax": "^3.4.5"

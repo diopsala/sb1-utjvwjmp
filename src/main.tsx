@@ -4,6 +4,10 @@ import { BrowserRouter } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import App from './App.tsx';
 import './index.css';
+import { defineCustomElements } from '@ionic/pwa-elements/loader';
+
+// Call the element loader after the app has been rendered the first time
+defineCustomElements(window);
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
