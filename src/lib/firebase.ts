@@ -10,7 +10,8 @@ console.log('Environment variables status:', {
   VITE_FIREBASE_PROJECT_ID: !!import.meta.env.VITE_FIREBASE_PROJECT_ID,
   VITE_FIREBASE_STORAGE_BUCKET: !!import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   VITE_FIREBASE_MESSAGING_SENDER_ID: !!import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  VITE_FIREBASE_APP_ID: !!import.meta.env.VITE_FIREBASE_APP_ID
+  VITE_FIREBASE_APP_ID: !!import.meta.env.VITE_FIREBASE_APP_ID,
+  VITE_OPENAI_MODEL: !!import.meta.env.VITE_OPENAI_MODEL
 });
 
 // Ensure all required environment variables are present
@@ -51,7 +52,7 @@ try {
 }
 
 
-export { db, auth,  };
+export { db, auth };
 
 // Helper functions for Cloud Functions
 const getUserStats = async () => {
@@ -65,7 +66,7 @@ const getUserStats = async () => {
   }
 };
 
-export const analyzeImageWithAI = async (imageUrl) => {
+export const generateCorrection = async (homeworkId: string) => {
   try {
     // Obtenir le token d'authentification
     const token = await auth.currentUser?.getIdToken();
@@ -74,49 +75,16 @@ export const analyzeImageWithAI = async (imageUrl) => {
       throw new Error('Non authentifié');
     }
 
-    // Appel de la fonction Cloud via fetch pour plus de contrôle
-    const functionUrl = `https://${import.meta.env.VITE_FIREBASE_REGION}-${import.meta.env.VITE_FIREBASE_PROJECT_ID}.cloudfunctions.net/analyzeImageWithAI`;
-    
-    const response = await fetch(functionUrl, {
+    const response = await fetch(`https://${import.meta.env.VITE_FIREBASE_REGION}-${import.meta.env.VITE_FIREBASE_PROJECT_ID}.cloudfunctions.net/generateCorrection`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ imageUrl }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Erreur lors de l\'analyse');
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Error calling analyzeImageWithAI function:', error);
-    throw error;
-  }
-};
-
-export const generateCorrection = async (homeworkId) => {
-  try {
-    // Obtenir le token d'authentification
-    const token = await auth.currentUser?.getIdToken();
-    
-    if (!token) {
-      throw new Error('Non authentifié');
-    }
-
-    // Appel de la fonction Cloud via fetch
-    const functionUrl = `https://${import.meta.env.VITE_FIREBASE_REGION}-${import.meta.env.VITE_FIREBASE_PROJECT_ID}.cloudfunctions.net/generateCorrection`;
-    
-    const response = await fetch(functionUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ homeworkId }),
+      body: JSON.stringify({ 
+        homeworkId,
+        model: import.meta.env.VITE_OPENAI_MODEL || 'gpt-4o'
+      }),
     });
 
     if (!response.ok) {
@@ -132,7 +100,7 @@ export const generateCorrection = async (homeworkId) => {
 };
 
 // Helper functions for database operations
-const createHomework = async (data) => {
+const createHomework = async (data: any) => {
   const homeworkRef = doc(collection(db, 'homework'));
   await setDoc(homeworkRef, {
     ...data,
@@ -142,12 +110,12 @@ const createHomework = async (data) => {
   return homeworkRef.id;
 };
 
-const updateHomework = async (id, data) => {
+const updateHomework = async (id: string, data: any) => {
   const homeworkRef = doc(db, 'homework', id);
   await updateDoc(homeworkRef, data);
 };
 
-const deleteHomework = async (id) => {
+const deleteHomework = async (id: string) => {
   const homeworkRef = doc(db, 'homework', id);
   await deleteDoc(homeworkRef);
 };

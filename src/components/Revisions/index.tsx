@@ -232,7 +232,7 @@ export default function Revisions({ onBack }: { onBack: () => void }) {
       
       setQuizResources(resourcesData);
       
-      // 2. Generate quiz from resources using GPT-4o
+      // 2. Generate quiz from resources using OpenAI
       const generatedQuiz = await generateQuiz(subject, difficulty, resourcesData, quizSettings);
       setQuiz(generatedQuiz);
       
@@ -367,7 +367,7 @@ export default function Revisions({ onBack }: { onBack: () => void }) {
     setStep(RevisionStep.RESULTS);
   };
 
-  // Function to generate a quiz using GPT-4o
+  // Function to generate a quiz using OpenAI
   const generateQuiz = async (
     subject: Subject,
     difficulty: number, 
@@ -383,7 +383,7 @@ export default function Revisions({ onBack }: { onBack: () => void }) {
       else if (difficulty === 4) questionFormat = 'mcq,open';
       else if (difficulty === 5) questionFormat = 'open'; // Hardest: open questions only
       
-      // Prepare prompt for GPT-4o with strict instructions for JSON output
+      // Prepare prompt for OpenAI with strict instructions for JSON output
       const prompt = {
         role: 'system',
         content: `Tu es un professeur virtuel. Génère un quiz en ${subject.label}, niveau ${difficulty}/5, 
@@ -431,7 +431,7 @@ export default function Revisions({ onBack }: { onBack: () => void }) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4o',
+          model: import.meta.env.VITE_OPENAI_MODEL || 'gpt-4o',
           messages: [
             prompt,
             {
@@ -573,7 +573,7 @@ export default function Revisions({ onBack }: { onBack: () => void }) {
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
-                model: 'gpt-4o',
+                model: import.meta.env.VITE_OPENAI_MODEL || 'gpt-4o',
                 messages: [
                   {
                     role: 'system',

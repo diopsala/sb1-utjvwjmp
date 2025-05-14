@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { Camera as CameraIcon, Upload, ArrowLeft, HelpCircle, AlertCircle } from 'lucide-react';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
-import { db, auth, analyzeImageWithAI } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import { collection, doc, setDoc } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { uploadToCloudinary } from '../lib/cloudinary';
@@ -74,7 +74,7 @@ export default function Scanner({ onBack }: ScannerProps) {
         'conjuguez les verbes',
         'rédaction française'
       ]
-    }
+    };
     
     // First, check for explicit language markers
     if (languagePatterns.english.some(pattern => analysisLower.includes(pattern))) {
@@ -105,21 +105,121 @@ export default function Scanner({ onBack }: ScannerProps) {
     return 'other';
   };
 
-  const analyzeWithGPT4Vision = async (imageUrl: string): Promise<string> => {
+ const analyzeImageWithAI = async (imageUrl: string): Promise<string> => {
     try {
       setProgress('Préparation de l\'analyse...');
-      
-      // Utiliser la fonction Cloud pour l'analyse
-      const result = await analyzeImageWithAI(imageUrl);
-      
-      if (!result.success) {
-        throw new Error(result.error || "Erreur lors de l'analyse");
+
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o',
+          messages: [
+            {
+              role: 'system',
+              content: `Tu es un prof expert et polyvalent qui aide les élèves à comprendre leurs exercices.
+              Ton but est de les aider à comprendre leurs exercices en utilisant un langage simple et accessible. 
+              Le document fourni peut contenir un exercice ou un sujet à traiter. Il est CRUCIAL de bien identifier la matière.
+
+              RÈGLES CRITIQUES POUR L'IDENTIFICATION DES MATIÈRES :
+              1. Pour l'anglais :
+                - TOUJOURS vérifier si les consignes sont en anglais
+                - TOUJOURS vérifier si les réponses doivent être données en anglais
+                - Identifier les points de grammaire anglaise spécifiques :
+                  * Temps verbaux (present simple, past simple, present perfect, etc.)
+                  * Modaux (can, must, should, etc.)
+                  * Verbes irréguliers
+                  * Phrasal verbs
+                - Repérer les exercices typiques d'anglais :
+                  * Compréhension de texte
+                  * Questions-réponses
+                  * Fill in the blanks
+                  * Rédaction en anglais
+                  * Traduction vers l'anglais
+              
+              2. Pour le français :
+                - TOUJOURS vérifier si les consignes sont en français
+                - TOUJOURS vérifier si les réponses doivent être données en français
+                - Identifier les points de grammaire française spécifiques :
+                  * Conjugaison (imparfait, passé composé, subjonctif, etc.)
+                  * Accords (participes passés, adjectifs)
+                  * Syntaxe française
+                - Repérer les exercices typiques de français :
+                  * Analyse de texte
+                  * Dissertation
+                  * Commentaire composé
+                  * Rédaction en français
+                  * Questions de compréhension en français
+              
+              TRÈS IMPORTANT :
+              1. Commence TOUJOURS par identifier et mentionner explicitement la matière
+              2. Pour les exercices de langue, précise CLAIREMENT s'il s'agit d'anglais ou de français
+              3. En cas de doute sur la langue, analyse attentivement :
+                 - La langue des consignes
+                 - Le vocabulaire spécifique utilisé
+                 - Les structures grammaticales demandées
+              4. TOUJOURS mentionner la matière dès la première ligne de ta réponse sous la forme :
+                 "Je vois que tu bosses sur [MATIÈRE]. Cool !"
+              5. En cas d'exercice de langue, TOUJOURS préciser explicitement :
+                 "C'est un exercice d'ANGLAIS" ou "C'est un exercice de FRANÇAIS"
+
+              Ensuite, pour chaque exercice :
+              1. Explique clairement le type d'exercice et ses objectifs
+              2. Fournis une correction détaillée et structurée
+              3. Explique la méthode de résolution
+              4. Donne des conseils pratiques
+
+              Format de ta réponse :
+
+              👋 Hey ! Je vois que tu bosses sur [matière]. Cool !
+
+              📝 Pour cet exercice, voici ce qu'on te demande :
+              [Explication simple de la consigne]
+
+    
+
+              Passe à la correction pour avoir la solution ! 😊`
+            },
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: 'Analyse cet exercice et donne une correction complète.'
+                },
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: imageUrl,
+                    detail: 'high'
+                  }
+                }
+              ]
+            }
+          ],
+          max_tokens: 1000,
+          temperature: 0.7
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('GPT-4 Vision API Error:', errorData);
+        throw new Error(errorData.error?.message || 'Erreur lors de l\'analyse');
       }
-      
-      return result.result.analysis;
-    } catch (error) {
+
+      const data = await response.json();
+      if (!data.choices?.[0]?.message?.content) {
+        throw new Error('Réponse invalide du modèle');
+      }
+
+      return data.choices[0].message.content;
+    } catch (error: any) {
       console.error('Error in analyzeWithGPT4Vision:', error);
-      throw error instanceof Error ? error : new Error('Erreur lors de l\'analyse');
+      throw new Error(error.message || 'Erreur lors de l\'analyse');
     }
   };
 
@@ -137,7 +237,7 @@ export default function Scanner({ onBack }: ScannerProps) {
       const cloudinaryUrl = await uploadToCloudinary(imageData, docId);
       
       setProgress('Analyse de l\'image avec GPT-4 Vision...');
-      const analysis = await analyzeWithGPT4Vision(cloudinaryUrl);
+      const analysis = await analyzeImageWithAI(cloudinaryUrl);
 
       const detectedSubject = detectSubject(analysis);
 

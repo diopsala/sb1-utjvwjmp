@@ -1,149 +1,217 @@
-import * as functions from "firebase-functions";
-import * as admin from "firebase-admin";
-import * as cors from "cors";
+// Import required modules
+import * as functions from 'firebase-functions';
+import * as admin from 'firebase-admin';
+import * as cors from 'cors';
 
 admin.initializeApp();
 
 const corsHandler = cors({origin: true});
 
-// Exemple d'une fonction Cloud pour analyser une image avec OpenAI
+// Analyze image with AI (OpenAI GPT-4 Vision)
 exports.analyzeImageWithAI = functions.https.onRequest((request, response) => {
   corsHandler(request, response, async () => {
     try {
-      // Vérification de la méthode
-      if (request.method !== "POST") {
-        return response.status(405).json({error: "Method Not Allowed"});
+      // Validate request method
+      if (request.method !== 'POST') {
+        return response.status(405).json({error: 'Method not allowed'});
       }
 
-      // Extraction des données de la requête
+      // Validate request body
       const {imageUrl} = request.body;
       if (!imageUrl) {
-        return response.status(400).json({error: "Missing image URL"});
+        return response.status(400).json({error: 'Missing imageUrl'});
       }
 
-      // Vérification de l'authentification
+      // Validate authentication
       const authHeader = request.headers.authorization;
-      if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        return response.status(403).json({error: "Unauthorized"});
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return response.status(401).json({error: 'Unauthorized'});
       }
 
-      const idToken = authHeader.split("Bearer ")[1];
+      const idToken = authHeader.split('Bearer ')[1];
       try {
         await admin.auth().verifyIdToken(idToken);
       } catch (error) {
-        console.error("Error verifying token:", error);
-        return response.status(403).json({error: "Invalid token"});
+        console.error('Error verifying token:', error);
+        return response.status(401).json({error: 'Invalid token'});
       }
 
-      // Appel à l'API OpenAI (à implémenter avec axios)
-      // const analysisResult = await callOpenAIVisionAPI(imageUrl);
-
-      // Pour l'instant, nous retournons une réponse simulée
-      const analysisResult = {
-        subject: "math",
-        analysis: "Ceci est un exemple d'exercice de mathématiques.",
-        confidence: 0.95,
+      // Configure prompt for OpenAI
+      const promptSettings = {
+        subject: 'Texte ou exercice visible dans l\'image',
+        message: 'Analyse ce devoir et explique-le de façon détaillée. Identifie la matière et décris la méthode de résolution. Ne te contente pas de décrire ce que tu vois - explique vraiment le sujet, les concepts et les méthodes pour arriver à la solution.',
       };
 
-      // Enregistrement du résultat dans Firestore (optionnel)
-      const homeworkRef = admin.firestore().collection("homework").doc();
-      await homeworkRef.set({
-        image_url: imageUrl,
-        analysis: analysisResult.analysis,
-        subject: analysisResult.subject,
-        created_at: admin.firestore.FieldValue.serverTimestamp(),
-        user_id: "user123", // Remplacer par l'ID utilisateur réel extrait du token
+      // Get OpenAI model from request or use default
+      const model = request.body.model || process.env.OPENAI_MODEL || 'gpt-4o';
+
+      // Make the API call to OpenAI
+      const apiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [
+            {
+              role: 'system', 
+              content: `Tu es un professeur expert qui analyse des exercices scolaires pour les élèves. 
+              Ton objectif est de fournir une analyse précise et pédagogique. 
+              Identifie la matière, le niveau, et explique pas à pas comment résoudre l'exercice.
+              Si c'est un exercice de maths, analyse chaque étape. 
+              Pour les langues, explique la grammaire, le vocabulaire ou la structure.
+              En sciences, clarifie les concepts et la méthode.
+              Sois précis, pédagogique, et encourage l'élève à comprendre plutôt que juste mémoriser.`
+            },
+            {
+              role: 'user',
+              content: [
+                {type: 'text', text: promptSettings.message},
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: imageUrl,
+                    detail: 'high'
+                  }
+                }
+              ]
+            }
+          ],
+          max_tokens: 1000,
+        })
       });
+
+      if (!apiResponse.ok) {
+        const errorData = await apiResponse.json();
+        console.error('OpenAI API error:', errorData);
+        return response.status(500).json({error: 'Error from OpenAI API'});
+      }
+
+      const openaiResponse = await apiResponse.json();
 
       return response.status(200).json({
         success: true,
-        result: analysisResult,
-        homeworkId: homeworkRef.id,
+        result: {
+          subject: promptSettings.subject,
+          analysis: openaiResponse.choices[0]?.message?.content || '',
+        }
       });
     } catch (error) {
-      console.error("Error in analyzeImageWithAI:", error);
+      console.error('Error analyzing image with AI:', error);
       return response.status(500).json({
-        error: "Internal Server Error",
-        message: error instanceof Error ? error.message : "Unknown error",
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : 'Unknown error'
       });
     }
   });
 });
 
-// Fonction pour générer une correction avec GPT-4
+// Generate correction for homework
 exports.generateCorrection = functions.https.onRequest((request, response) => {
   corsHandler(request, response, async () => {
     try {
-      // Vérification de la méthode
-      if (request.method !== "POST") {
-        return response.status(405).json({error: "Method Not Allowed"});
+      // Validate request method
+      if (request.method !== 'POST') {
+        return response.status(405).json({error: 'Method not allowed'});
       }
 
-      // Extraction des données de la requête
+      // Validate request body
       const {homeworkId} = request.body;
       if (!homeworkId) {
-        return response.status(400).json({error: "Missing homeworkId"});
+        return response.status(400).json({error: 'Missing homeworkId'});
       }
 
-      // Vérification de l'authentification
+      // Validate authentication
       const authHeader = request.headers.authorization;
-      if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        return response.status(403).json({error: "Unauthorized"});
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return response.status(401).json({error: 'Unauthorized'});
       }
 
-      const idToken = authHeader.split("Bearer ")[1];
+      const idToken = authHeader.split('Bearer ')[1];
       let uid;
       try {
         const decodedToken = await admin.auth().verifyIdToken(idToken);
         uid = decodedToken.uid;
       } catch (error) {
-        console.error("Error verifying token:", error);
-        return response.status(403).json({error: "Invalid token"});
+        console.error('Error verifying token:', error);
+        return response.status(401).json({error: 'Invalid token'});
       }
 
-      // Récupération du devoir
-      const homeworkRef = admin.firestore().collection("homework").doc(homeworkId);
+      // Get the homework document
+      const homeworkRef = admin.firestore().collection('homework').doc(homeworkId);
       const homeworkDoc = await homeworkRef.get();
 
       if (!homeworkDoc.exists) {
-        return response.status(404).json({error: "Homework not found"});
+        return response.status(404).json({error: 'Homework not found'});
       }
 
       const homeworkData = homeworkDoc.data();
 
-      // Vérification que l'utilisateur est le propriétaire du devoir
+      // Ensure user owns the homework
       if (homeworkData?.user_id !== uid) {
-        return response.status(403).json({error: "Not authorized to access this homework"});
+        return response.status(403).json({error: 'You do not have permission to access this homework'});
       }
 
-      // Exemple de correction générée
-      const correction = `
-👋 Hey ! Je vois que tu bosses sur ${homeworkData?.subject}. Cool !
+      // Get OpenAI model from request or use default
+      const model = request.body.model || process.env.OPENAI_MODEL || 'gpt-4o';
 
-📝 Pour cet exercice, voici ce qu'on te demande :
+      // Configure prompt for correction
+      const correctionPrompt = `
+Exercice à corriger:
+
 ${homeworkData?.analysis}
 
-✨ Voici la correction complète :
-[Correction détaillée simulée]
+---
 
-🔍 Comment j'ai fait pour résoudre ça :
-[Explication de la méthode]
+Génère une correction détaillée pour cet exercice. Ta réponse doit suivre ce format exact:
 
-💡 Petites astuces pour la prochaine fois :
-- Astuce 1
-- Astuce 2
-- Astuce 3
+👋 Introduction: Présente le sujet et le type d'exercice
 
-🎯 Pour t'entraîner :
-Voici un exercice similaire simplifié pour pratiquer.
+📝 Concepts clés: Explique les notions théoriques essentielles pour comprendre l'exercice
 
-N'hésite pas si tu as des questions ! 😊
-      `;
+✨ Méthode de résolution: Détaille l'approche générale à utiliser
 
-      // Mise à jour du document avec la correction
+🔍 Résolution pas à pas: Explique chaque étape de la résolution avec clarté
+
+💡 Points importants: Souligne les aspects cruciaux ou les pièges à éviter
+
+🎯 Conclusion: Résume la démarche et les enseignements à retenir
+
+Sois pédagogique, précis et adapte ton explication au niveau scolaire approprié.`;
+
+      // Call OpenAI API for correction generation
+      const apiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [
+            {
+              role: 'user',
+              content: correctionPrompt
+            }
+          ],
+          temperature: 0.7,
+        }),
+      });
+
+      if (!apiResponse.ok) {
+        throw new Error('Failed to generate correction with OpenAI API');
+      }
+
+      const data = await apiResponse.json();
+      
+      const correction = data.choices[0]?.message?.content;
+
+      // Update the homework document with the correction
       await homeworkRef.update({
         correction: correction,
-        corrected_at: admin.firestore.FieldValue.serverTimestamp(),
+        correction_timestamp: admin.firestore.FieldValue.serverTimestamp(),
       });
 
       return response.status(200).json({
@@ -151,119 +219,98 @@ N'hésite pas si tu as des questions ! 😊
         correction: correction,
       });
     } catch (error) {
-      console.error("Error in generateCorrection:", error);
+      console.error('Error generating correction:', error);
       return response.status(500).json({
-        error: "Internal Server Error",
-        message: error instanceof Error ? error.message : "Unknown error",
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : 'Unknown error'
       });
     }
   });
 });
 
-// Fonction pour traiter les callbacks de paiement Stripe (exemple)
-exports.processStripeWebhook = functions.https.onRequest((request, response) => {
+// Health check endpoint
+exports.healthCheckFunction = functions.https.onRequest((request, response) => {
   corsHandler(request, response, async () => {
-    // Implémentation à réaliser
-    response.status(200).send("Webhook received");
+    // Simple health check
+    response.status(200).send("Service is healthy");
   });
 });
 
-// Trigger qui s'exécute quand un nouveau devoir est créé
-exports.onNewHomework = functions.firestore
-    .document("homework/{homeworkId}")
-    .onCreate(async (snapshot, context) => {
-      const homeworkData = snapshot.data();
-      const userId = homeworkData.user_id;
+// Helper function to increment view count for resources
+exports.incrementView = functions.firestore
+    .document('resources/{resourceId}')
+    .onUpdate(async (change, context) => {
+      const newDocument = change.after.data();
+      const docId = context.params.resourceId;
 
-      // Mise à jour du compteur de devoirs de l'utilisateur
-      const userRef = admin.firestore().collection("users").doc(userId);
-      
       try {
         await admin.firestore().runTransaction(async (transaction) => {
-          const userDoc = await transaction.get(userRef);
+          const docRef = admin.firestore().collection('resources').doc(docId);
+          const docSnap = await transaction.get(docRef);
           
-          if (!userDoc.exists) {
+          if (!docSnap.exists) {
             return;
           }
           
-          const userData = userDoc.data() || {};
-          const homeworkCount = userData.homeworkCount || 0;
+          const userData = docSnap.data() || {};
+          const currentViews = userData.view_count || 0;
           
-          transaction.update(userRef, {
-            homeworkCount: homeworkCount + 1,
-            lastHomeworkAt: admin.firestore.FieldValue.serverTimestamp(),
+          transaction.update(docRef, {
+            view_count: currentViews + 1,
+            last_viewed_at: admin.firestore.FieldValue.serverTimestamp()
           });
         });
-
-        console.log(`Updated homework count for user ${userId}`);
+        
+        console.log(`Successfully incremented view count for resource ${docId}`);
       } catch (error) {
-        console.error("Error updating user homework count:", error);
+        console.error(`Error incrementing view count: ${error}`);
       }
     });
 
-// Fonction pour obtenir des statistiques utilisateur
-exports.getUserStats = functions.https.onCall(async (data, context) => {
-  // Vérification de l'authentification
+// Get statistics for user
+exports.getStats = functions.https.callable(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError(
-      "unauthenticated",
-      "L'utilisateur doit être authentifié."
+      'unauthenticated',
+      'The function must be called while authenticated.'
     );
   }
 
   const uid = context.auth.uid;
 
   try {
-    // Récupération des données utilisateur
-    const userRef = admin.firestore().collection("users").doc(uid);
-    const userDoc = await userRef.get();
+    // Get all homework documents for the user
+    const q = admin.firestore().collection('homework')
+      .where('user_id', '==', uid);
     
-    if (!userDoc.exists) {
-      throw new functions.https.HttpsError(
-        "not-found",
-        "Utilisateur non trouvé."
-      );
-    }
-
-    // Récupération des devoirs de l'utilisateur
-    const homeworkQuery = await admin.firestore()
-        .collection("homework")
-        .where("user_id", "==", uid)
-        .get();
-
-    // Calcul des statistiques
-    const totalHomework = homeworkQuery.size;
+    const querySnapshot = await q.get();
+    const homeworkData = querySnapshot.docs.map(doc => ({
+      docId: doc.id,
+      ...doc.data()
+    })) as any[];
     
-    // Calcul des statistiques par matière
-    const subjectStats: Record<string, {count: number; lastDate: Date | null}> = {};
+    // Get all performance records for all subjects
+    const q2 = admin.firestore()
+      .collection('revision_performances')
+      .doc(uid)
+      .collection('records');
     
-    homeworkQuery.forEach((doc) => {
-      const data = doc.data();
-      const subject = data.subject || "unknown";
-      
-      if (!subjectStats[subject]) {
-        subjectStats[subject] = {count: 0, lastDate: null};
-      }
-      
-      subjectStats[subject].count += 1;
-      
-      const currentDate = data.created_at ? new Date(data.created_at) : null;
-      if (currentDate && (!subjectStats[subject].lastDate || 
-          currentDate > subjectStats[subject].lastDate)) {
-        subjectStats[subject].lastDate = currentDate;
-      }
-    });
+    const performanceSnapshot = await q2.get();
+    const performances = performanceSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
 
     return {
-      totalHomework,
-      subjectStats,
-      // Ajoutez d'autres statistiques au besoin
+      homeworkData,
+      performances,
+      // Add any additional statistics here
     };
   } catch (error) {
-    console.error("Error getting user stats:", error);
+    console.error('Error getting user stats:', error);
     throw new functions.https.HttpsError(
-      "internal",
-      "Erreur lors de la récupération des statistiques."
+      'internal',
+      'Failed to retrieve user statistics data.'
     );
   }
 });

@@ -150,7 +150,7 @@ export default function QuizInterface({
     try {
       const currentQuestion = getCurrentQuestion();
       
-      // For open questions, we need to check with GPT-4o
+      // For open questions, we need to check with OpenAI
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -158,7 +158,7 @@ export default function QuizInterface({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4o',
+          model: import.meta.env.VITE_OPENAI_MODEL || 'gpt-4o',
           messages: [
             {
               role: 'system',
